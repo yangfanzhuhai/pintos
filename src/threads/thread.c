@@ -245,10 +245,27 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list, &t->elem, higher_priority, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
+
+/* list_less_func() for list_insert_ordered() 
+   threads with higher priority comes first */
+bool 
+higher_priority(const struct list_elem *elem1, 
+	const struct list_elem *elem2,
+	void *aux)
+{
+	ASSERT(elem1 != NULL);
+	ASSERT(elem2 != NULL);
+	struct thread *thread1 
+		= list_entry (elem1, struct thread, elem);
+	struct thread *thread2 
+		= list_entry (elem2, struct thread, elem);
+	return ((thread1->priority) > (thread2->priority));
+}
+
 
 /* Returns the name of the running thread. */
 const char *
