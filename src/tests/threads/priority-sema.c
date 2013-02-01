@@ -34,7 +34,6 @@ test_priority_sema (void)
     {
       sema_up (&sema);
       msg ("Back in main thread."); 
-      
     }
 }
 

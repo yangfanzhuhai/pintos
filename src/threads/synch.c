@@ -64,34 +64,18 @@ sema_down (struct semaphore *sema)
   ASSERT (sema != NULL);
   ASSERT (!intr_context ());
   old_level = intr_disable ();
-  print_list(&sema->waiters);
-  
+
   while (sema->value == 0) 
     {
+      //list_push_back (&sema->waiters, &thread_current ()->elem);
       list_insert_ordered(&sema->waiters, &thread_current ()->elem, higher_priority, NULL);
-      
+
       thread_block ();
     }
+    
   sema->value--;
   intr_set_level (old_level);
 }
-
-
-void print_list(struct list *list) {
-    struct list_elem *elem;
-
-  //ASSERT (list != NULL);
-  //ASSERT (elem != NULL);
-  //ASSERT (less != NULL);
-
-  for (elem = list_begin (list); elem != list_end (list); elem = list_next (elem)) {
-     struct thread *afoo = list_entry (elem, struct thread, elem);
-     printf("priority = %d\n", afoo->priority);
-  }
-    
-  return;
-}
-
 
 /* Down or "P" operation on a semaphore, but only if the
    semaphore is not already 0.  Returns true if the semaphore is
@@ -129,7 +113,7 @@ sema_up (struct semaphore *sema)
   enum intr_level old_level;
 
   ASSERT (sema != NULL);
-
+  
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) 
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
