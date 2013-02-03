@@ -345,10 +345,13 @@ thread_set_priority (int new_priority)
 { 
   /* % Luke's implementation */
   struct thread *curr, *next;
+  curr = thread_current();
   curr->priority = new_priority;
-  next = list_entry (list_head(&ready_list), struct thread, elem);
-  if(next != NULL && curr->priority < next->priority){
-  thread_yield();
+  next = list_entry (list_front(&ready_list), struct thread, elem);
+
+  if (next != NULL && curr->priority < next->priority)
+  {
+      thread_yield();
   }
   /* End */
 }
