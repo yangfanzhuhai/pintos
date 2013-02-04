@@ -67,7 +67,6 @@ sema_down (struct semaphore *sema)
 
   while (sema->value == 0) 
     {
-      //list_push_back (&sema->waiters, &thread_current ()->elem);
       list_insert_ordered(&sema->waiters, 
         &thread_current ()->elem, higher_priority, NULL);
 
@@ -117,16 +116,19 @@ sema_up (struct semaphore *sema)
   ASSERT (sema != NULL);
   
   old_level = intr_disable ();
-  if (!list_empty (&sema->waiters)) {
-    next = list_entry (list_pop_front (&sema->waiters), 
-      struct thread, elem);
-    thread_unblock (next);
-  }
+  if (!list_empty (&sema->waiters)) 
+    {
+      next = list_entry (list_pop_front (&sema->waiters), 
+        struct thread, elem);
+      thread_unblock (next);
+    }
     
   sema->value++;
   
   if (next != NULL && next-> priority > thread_current()->priority)
-    thread_yield();
+    {
+      thread_yield();
+    }
   
   intr_set_level (old_level);
 }
@@ -327,12 +329,13 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
-  if (!list_empty (&cond->waiters)) {
-    struct list_elem *max_list_elem
-      = list_max (&cond->waiters, highest_priority, NULL);
-    sema_up (&list_entry (max_list_elem, 
-            struct semaphore_elem, elem)->semaphore);
-  }
+  if (!list_empty (&cond->waiters)) 
+    {
+      struct list_elem *max_list_elem
+        = list_max (&cond->waiters, highest_priority, NULL);
+      sema_up (&list_entry (max_list_elem, 
+        struct semaphore_elem, elem)->semaphore);
+    }
     
 }
 
@@ -358,7 +361,7 @@ highest_priority(const struct list_elem *elem1,
   struct thread *thread2 
 	  = list_entry(list_front(&sema2->waiters), struct thread, elem);
 	  
-	return ((thread1->priority) < (thread2->priority));
+	return thread1->priority < thread2->priority;
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
