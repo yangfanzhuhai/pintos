@@ -368,13 +368,15 @@ thread_set_priority (int new_priority)
 { 
   
   /* % Luke's implementation */
-  /*struct thread *curr, *next;
+  struct thread *curr, *next;
+  curr = thread_current();
   curr->priority = new_priority;
-  next = list_entry (list_head(&ready_list), struct thread, elem);
-  if(next != NULL && curr->priority < next->priority)
-    {
+  next = list_entry (list_begin(&ready_list), struct thread, elem);
+
+  if (next != NULL && curr->priority < next->priority)
+  {
       thread_yield();
-    }
+  }
   /* End */
   thread_current ()-> priority = new_priority;
   
@@ -416,7 +418,7 @@ thread_get_recent_cpu (void)
   /* Not yet implemented. */
   return 0;
 }
-
+
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -465,7 +467,7 @@ kernel_thread (thread_func *function, void *aux)
   function (aux);       /* Execute the thread function. */
   thread_exit ();       /* If function() returns, kill the thread. */
 }
-
+
 /* Returns the running thread. */
 struct thread *
 running_thread (void) 
@@ -504,6 +506,12 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+
+  /* Luke's Implementation */
+  t->base_priority = priority;
+  /* Luke's implementation */
+  list_init (&t->donors);
+  /* End */
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -619,7 +627,7 @@ allocate_tid (void)
 
   return tid;
 }
-
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
