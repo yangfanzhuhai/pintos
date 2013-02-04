@@ -196,15 +196,18 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+  struct thread *holder;
+  holder = lock->holder;
+
   /* Case where lock is not held */
-  if (lock->holder == NULL)
+  if (holder == NULL)
     {
       sema_down (&lock->semaphore);
-      lock->holder = thread_current ();
+      holder = thread_current ();
     }
-  else if (lock->holder->priority < thread_current()->priority)
+  else if (holder->priority < thread_current()->priority)
     {
-      /* Donation */
+      
     }
   else
     {

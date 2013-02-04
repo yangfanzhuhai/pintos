@@ -92,6 +92,11 @@ struct thread
     struct list_elem sleepelem;         /* List element for sleeping threads. */
     struct list_elem allelem;           /* List element for all threads list. */
 
+    /* Luke's Implementation */
+    int base_priority;
+    struct list donors;
+    /* End */    
+
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
