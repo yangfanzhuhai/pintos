@@ -92,8 +92,6 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
-  /* Luke's implementation */
-  list_init (&donors);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -486,6 +484,8 @@ init_thread (struct thread *t, const char *name, int priority)
 
   /* Luke's Implementation */
   t->base_priority = priority;
+  /* Luke's implementation */
+  list_init (&t->donors);
   /* End */
 
   old_level = intr_disable ();
