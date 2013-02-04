@@ -363,8 +363,15 @@ thread_foreach (thread_action_func *func, void *aux)
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) 
-{
-  thread_current ()->priority = new_priority;
+{ 
+  /* % Luke's implementation */
+  struct thread *curr, *next;
+  curr->priority = new_priority;
+  next = list_entry (list_head(&ready_list), struct thread, elem);
+  if(next != NULL && curr->priority < next->priority){
+  thread_yield();
+  }
+  /* End */
 }
 
 /* Returns the current thread's priority. */
@@ -376,17 +383,16 @@ thread_get_priority (void)
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) 
+thread_set_nice (int nice) 
 {
-  /* Not yet implemented. */
+  thread_current ()->niceness = nice;
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return thread_current ()->niceness;
 }
 
 /* Returns 100 times the system load average. */
