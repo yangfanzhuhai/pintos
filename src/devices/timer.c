@@ -96,11 +96,15 @@ void
 timer_sleep (int64_t ticks) 
 {
   ASSERT (intr_get_level () == INTR_ON);
+  enum intr_level old_level;
+  old_level = intr_disable ();
   
   struct thread *t = thread_current ();
   t->wake_up_tick = timer_ticks () + ticks;
   list_push_back (&sleeping_threads, &t->sleepelem);
   thread_block ();
+  
+  intr_set_level (old_level);
 }
 
 /* Check all sleeping threads to see if its time for the thread to wake up */
