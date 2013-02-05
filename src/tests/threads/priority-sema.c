@@ -19,7 +19,7 @@ test_priority_sema (void)
   
   /* This test does not work with the MLFQS. */
   ASSERT (!thread_mlfqs);
-
+  
   sema_init (&sema, 0);
   thread_set_priority (PRI_MIN);
   for (i = 0; i < 10; i++) 
@@ -35,6 +35,8 @@ test_priority_sema (void)
       sema_up (&sema);
       msg ("Back in main thread."); 
     }
+    
+    
 }
 
 static void

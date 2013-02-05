@@ -14,11 +14,16 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
+#include "threads/fixed-point.h"
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
+
+#define LOAD_AVG_REFRESH_RATE (60)
+
+int32_t load_avg = 0;
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
@@ -205,10 +210,15 @@ thread_create (const char *name, int priority,
   sf->ebp = 0;
 
   intr_set_level (old_level);
-
+  
   /* Add to run queue. */
   thread_unblock (t);
 
+
+  if (t->priority > thread_current ()->priority) 
+    {
+      thread_yield();
+    }
   return tid;
 }
 
@@ -242,21 +252,20 @@ thread_unblock (struct thread *t)
   enum intr_level old_level;
 
   ASSERT (is_thread (t));
-
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  list_insert_ordered (&ready_list, &t->elem, 
+    higher_priority, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
 
 /* list_less_func() for list_insert_ordered() 
-   threads with higher priority comes first
-   checks elem1 has higher priority than elem2 */
+   threads with higher priority comes first */
 bool 
-higher_priority(struct list_elem *elem1, 
-	struct list_elem *elem2,
-	void *aux)
+higher_priority(const struct list_elem *elem1, 
+	const struct list_elem *elem2,
+	void *aux UNUSED)
 {
 	ASSERT(elem1 != NULL);
 	ASSERT(elem2 != NULL);
@@ -264,8 +273,7 @@ higher_priority(struct list_elem *elem1,
 		= list_entry (elem1, struct thread, elem);
 	struct thread *thread2 
 		= list_entry (elem2, struct thread, elem);
-	aux;
-	return t1 -> priority > t2 -> priority;
+	return thread1->priority > thread2->priority;
 }
 
 
@@ -335,7 +343,8 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list, &cur->elem, 
+      higher_priority, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -361,8 +370,21 @@ thread_foreach (thread_action_func *func, void *aux)
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) 
-{
-  thread_current ()->priority = new_priority;
+{ 
+  
+  /* % Luke's implementation */
+  struct thread *curr, *next;
+  curr = thread_current();
+  curr->priority = new_priority;
+  next = list_entry (list_begin(&ready_list), struct thread, elem);
+
+  if (next != NULL && curr->priority < next->priority)
+  {
+      thread_yield();
+  }
+  /* End */
+  thread_current ()-> priority = new_priority;
+  
 }
 
 /* Returns the current thread's priority. */
@@ -374,35 +396,33 @@ thread_get_priority (void)
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) 
+thread_set_nice (int nice) 
 {
-  /* Not yet implemented. */
+  thread_current ()->niceness = nice;
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return thread_current ()->niceness;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return (int)round_fp_to_int (fp_int_multiplication (load_avg,100));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  int32_t ct_cpu = thread_current ()->recent_cpu;
+  return (int)round_fp_to_int (fp_int_multiplication (load_avg,100));
 }
-
+
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -451,7 +471,7 @@ kernel_thread (thread_func *function, void *aux)
   function (aux);       /* Execute the thread function. */
   thread_exit ();       /* If function() returns, kill the thread. */
 }
-
+
 /* Returns the running thread. */
 struct thread *
 running_thread (void) 
@@ -490,6 +510,12 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+
+  /* Luke's Implementation */
+  t->base_priority = priority;
+  /* Luke's implementation */
+  list_init (&t->donors);
+  /* End */
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -605,7 +631,73 @@ allocate_tid (void)
 
   return tid;
 }
-
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+
+
+
+/* Get the number of threads that are either running or ready to run 
+   (not including the idle thread). */
+int
+threads_ready_or_running (void)
+{
+  /* Notes:
+       -> The idle thread is not stored on the ready list */
+
+  int ready_threads = list_size (&ready_list);
+
+  /* If the current thread isn't the idle thread then there is a running thread
+     that should be added to the count */
+  if (thread_current () != idle_thread)
+    {
+      ready_threads++;
+    }
+
+  return ready_threads;
+}
+
+/* Update the load_avg value.
+
+   NOTE:
+    -> The load_avg value is stored as a fixed point value as defined in
+       fixed-point.h */
+void
+update_load_avg (void)
+{
+  int32_t ready_threads = (int32_t)threads_ready_or_running ();
+
+  int32_t fp_refresh = int_to_fp ((LOAD_AVG_REFRESH_RATE));
+  int32_t fp_refresh_minus_1 = int_to_fp ((LOAD_AVG_REFRESH_RATE - 1));
+  int32_t fp_1 = int_to_fp (1);
+
+  /* (LOAD_AVG_REFRESH_RATE - 1 / LOAD_AVG_REFRESH_RATE) * load_avg */
+  int32_t fp_decay = fp_division (fp_refresh_minus_1,fp_refresh);
+  int32_t fp_decay_component = fp_multiplication (fp_decay,load_avg);
+
+  /* (1 / LOAD_AVG_REFRESH_RATE) * ready_threads */
+  int32_t fp_recip = fp_division (fp_1,fp_refresh);
+  int32_t fp_recip_component = fp_int_multiplication (fp_recip,ready_threads);
+
+  load_avg = fp_addition (fp_decay_component,fp_recip_component);
+}
+
+
+void
+thread_update_recent_cpu (struct thread *t)
+{
+  int32_t fp_dbl_load_avg = fp_int_multiplication (load_avg,2);
+  int32_t fp_dbl_load_avg_plus_1 = fp_int_addition (fp_dbl_load_avg,1);
+  int32_t fp_decay = fp_division (fp_dbl_load_avg,fp_dbl_load_avg_plus_1);
+  int32_t fp_decay_component = fp_multiplication (fp_decay,t->recent_cpu);
+  t->recent_cpu = fp_int_addition (fp_decay_component,(int32_t)t->niceness);
+}
+
+
+
+
+
+
+
