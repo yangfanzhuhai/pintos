@@ -250,6 +250,25 @@ thread_unblock (struct thread *t)
   intr_set_level (old_level);
 }
 
+/* list_less_func() for list_insert_ordered() 
+   threads with higher priority comes first
+   checks elem1 has higher priority than elem2 */
+bool 
+higher_priority(struct list_elem *elem1, 
+	struct list_elem *elem2,
+	void *aux)
+{
+	ASSERT(elem1 != NULL);
+	ASSERT(elem2 != NULL);
+	struct thread *thread1 
+		= list_entry (elem1, struct thread, elem);
+	struct thread *thread2 
+		= list_entry (elem2, struct thread, elem);
+	aux;
+	return t1 -> priority > t2 -> priority;
+}
+
+
 /* Returns the name of the running thread. */
 const char *
 thread_name (void) 
