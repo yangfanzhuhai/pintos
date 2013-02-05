@@ -343,7 +343,7 @@ cond_wait (struct condition *cond, struct lock *lock)
 bool 
 higher_priority_sema(const struct list_elem *elem1, 
 	const struct list_elem *elem2,
-	void *aux)
+	void *aux UNUSED)
 {
 	ASSERT(elem1 != NULL);
 	ASSERT(elem2 != NULL);

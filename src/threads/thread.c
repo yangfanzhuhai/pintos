@@ -265,7 +265,7 @@ thread_unblock (struct thread *t)
 bool 
 higher_priority(const struct list_elem *elem1, 
 	const struct list_elem *elem2,
-	void *aux)
+	void *aux UNUSED)
 {
 	ASSERT(elem1 != NULL);
 	ASSERT(elem2 != NULL);
