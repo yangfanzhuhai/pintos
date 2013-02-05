@@ -89,6 +89,7 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     int niceness;                       /* Niceness. */
+    int32_t recent_cpu;                 /* recent_cpu */
     int64_t wake_up_tick;               /* Tick when this thread will wake up */
     struct list_elem sleepelem;         /* List element for sleeping threads. */
     struct list_elem allelem;           /* List element for all threads list. */
@@ -148,5 +149,9 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+int threads_ready_or_running (void);
+void update_load_avg (void);
+void thread_update_recent_cpu (struct thread *t);
 
 #endif /* threads/thread.h */

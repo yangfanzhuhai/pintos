@@ -14,11 +14,16 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
+#include "threads/fixed-point.h"
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
+
+#define LOAD_AVG_REFRESH_RATE (60)
+
+int32_t load_avg = 0;
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
@@ -407,16 +412,15 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return (int)round_fp_to_int (fp_int_multiplication (load_avg,100));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  int32_t ct_cpu = thread_current ()->recent_cpu;
+  return (int)round_fp_to_int (fp_int_multiplication (load_avg,100));
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -631,3 +635,69 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+
+
+
+/* Get the number of threads that are either running or ready to run 
+   (not including the idle thread). */
+int
+threads_ready_or_running (void)
+{
+  /* Notes:
+       -> The idle thread is not stored on the ready list */
+
+  int ready_threads = list_size (&ready_list);
+
+  /* If the current thread isn't the idle thread then there is a running thread
+     that should be added to the count */
+  if (thread_current () != idle_thread)
+    {
+      ready_threads++;
+    }
+
+  return ready_threads;
+}
+
+/* Update the load_avg value.
+
+   NOTE:
+    -> The load_avg value is stored as a fixed point value as defined in
+       fixed-point.h */
+void
+update_load_avg (void)
+{
+  int32_t ready_threads = (int32_t)threads_ready_or_running ();
+
+  int32_t fp_refresh = int_to_fp ((LOAD_AVG_REFRESH_RATE));
+  int32_t fp_refresh_minus_1 = int_to_fp ((LOAD_AVG_REFRESH_RATE - 1));
+  int32_t fp_1 = int_to_fp (1);
+
+  /* (LOAD_AVG_REFRESH_RATE - 1 / LOAD_AVG_REFRESH_RATE) * load_avg */
+  int32_t fp_decay = fp_division (fp_refresh_minus_1,fp_refresh);
+  int32_t fp_decay_component = fp_multiplication (fp_decay,load_avg);
+
+  /* (1 / LOAD_AVG_REFRESH_RATE) * ready_threads */
+  int32_t fp_recip = fp_division (fp_1,fp_refresh);
+  int32_t fp_recip_component = fp_int_multiplication (fp_recip,ready_threads);
+
+  load_avg = fp_addition (fp_decay_component,fp_recip_component);
+}
+
+
+void
+thread_update_recent_cpu (struct thread *t)
+{
+  int32_t fp_dbl_load_avg = fp_int_multiplication (load_avg,2);
+  int32_t fp_dbl_load_avg_plus_1 = fp_int_addition (fp_dbl_load_avg,1);
+  int32_t fp_decay = fp_division (fp_dbl_load_avg,fp_dbl_load_avg_plus_1);
+  int32_t fp_decay_component = fp_multiplication (fp_decay,t->recent_cpu);
+  t->recent_cpu = fp_int_addition (fp_decay_component,(int32_t)t->niceness);
+}
+
+
+
+
+
+
+
