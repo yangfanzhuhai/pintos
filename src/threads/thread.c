@@ -367,11 +367,31 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
-/* Sets the current thread's priority to NEW_PRIORITY. */
+/* Sets the current thread's base_priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) 
 { 
 
+  //printf("new priority %d\n", new_priority);
+  struct thread *curr, *next;
+  curr = thread_current();
+  curr->base_priority = new_priority;
+  if (list_empty(&curr->donors) || 
+      curr->base_priority > curr->priority)
+     curr->priority = curr->base_priority;
+  next = list_entry (list_begin(&ready_list), struct thread, elem);
+  
+    if (next != NULL && curr->priority < next->priority)
+  {
+      thread_yield();
+  }
+}
+
+/* Sets the current thread's apparent_priority to NEW_PRIORITY. */
+void
+thread_set_apparent_priority (int new_priority) 
+{ 
+  
 	//printf("new priority %d\n", new_priority);
   
   /* % Luke's implementation */
@@ -385,8 +405,7 @@ thread_set_priority (int new_priority)
       thread_yield();
   }
   /* End */
-  //thread_current ()-> priority = new_priority;
-  
+ 
 }
 
 /* Returns the current thread's priority. */

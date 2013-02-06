@@ -128,6 +128,7 @@ sema_up (struct semaphore *sema)
   
   if (next != NULL && next-> priority > thread_get_priority())
     {
+      //printf("Thread %s yielded in sema up.\n", thread_current()->name);
       thread_yield();
     }
   
@@ -295,19 +296,24 @@ lock_release (struct lock *lock)
 			
 			bool woke_donor 
 				= list_contains(donor_list, &woke->donor_elem);
-			//ASSERT (woke_donor == false);
+			
 			if (woke_donor)
 				{ 
 					ASSERT (list_size(donor_list) != 0);
-					//printf("donor name: %s\n", woke->name);
+					//printf("woke donor name: %s\n", woke->name);
+					
 					/* Delete the woke up donor from the donor list*/
 					list_remove(&woke->donor_elem);	
+					//printf("donor_list size %d\n", list_size(donor_list));
 					if (!list_empty(donor_list))
-						thread_set_priority(list_entry 
+						thread_set_apparent_priority(list_entry 
 											(list_begin (donor_list),
                       struct thread, donor_elem)->priority);
-					else 		
-						thread_set_priority(thread_current()->base_priority);
+					else
+					  { 		
+					  //printf("reseting to base priority\n");
+						thread_set_apparent_priority(thread_current()->base_priority);
+						}
 				}		
 		}
 	

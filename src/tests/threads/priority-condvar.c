@@ -38,7 +38,9 @@ test_priority_condvar (void)
       lock_acquire (&lock);
       msg ("Signaling...");
       cond_signal (&condition, &lock);
+      //msg ("finished signaling...to release lock");
       lock_release (&lock);
+      //msg ("main released lock");
     }
 }
 
@@ -50,4 +52,5 @@ priority_condvar_thread (void *aux UNUSED)
   cond_wait (&condition, &lock);
   msg ("Thread %s woke up.", thread_name ());
   lock_release (&lock);
+  //msg("Thread %s realeased lock", thread_name ());
 }
