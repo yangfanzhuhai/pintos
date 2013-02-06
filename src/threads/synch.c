@@ -106,8 +106,9 @@ sema_try_down (struct semaphore *sema)
 /* Up or "V" operation on a semaphore.  Increments SEMA's value
    and wakes up one thread of those waiting for SEMA, if any.
 
-   This function may be called from an interrupt handler. */
-void
+   This function may be called from an interrupt handler. 
+	 Returns a pointer to the thread that wakes up.*/
+struct thread *
 sema_up (struct semaphore *sema) 
 {
   enum intr_level old_level;
@@ -125,12 +126,13 @@ sema_up (struct semaphore *sema)
     
   sema->value++;
   
-  if (next != NULL && next-> priority > thread_current()->priority)
+  if (next != NULL && next-> priority > thread_get_priority())
     {
       thread_yield();
     }
   
   intr_set_level (old_level);
+	return next;
 }
 
 static void sema_test_helper (void *sema_);
@@ -208,29 +210,25 @@ lock_acquire (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
-  
-  sema_down (&lock->semaphore);
-  lock->holder = thread_current ();
 
-  /* Luke's implementation 
+  /* Luke's implementation */
   struct thread *holder;
   holder = lock->holder;
 
-  Case where lock is not held 
-  if (holder == NULL)
+  //Case where lock is held by a thread with lower priority
+	// donate the current thread's priority to the holder
+  if (holder != NULL && holder->priority < thread_get_priority())
     {
-      sema_down (&lock->semaphore);
-      holder = thread_current ();
+			printf("inside lock_acquire holder!=NULL\n");
+			printf("holder thread %s\n", holder->name);
+			printf("holder priority %d\n", holder->priority);
+			printf("current thread %s\n", thread_current()->name);
+			holder->priority = thread_get_priority();      
+			list_insert_ordered(&holder->donors, &thread_current()->donor_elem, higher_priority, NULL);
     }
-  else if (holder->priority < thread_current()->priority)
-    {
-      
-    }
-  else
-    {
-       Holder's priority is higher than 
-    } 
-   */
+ 
+  sema_down (&lock->semaphore);
+  lock->holder = thread_current ();
 } 
       
 
@@ -266,8 +264,34 @@ lock_release (struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
 
   lock->holder = NULL;
-  sema_up (&lock->semaphore);
+
+	struct thread *woke;
+	struct list *donor_list;
+  woke = sema_up (&lock->semaphore);
+	
+	if (woke != NULL) 
+		{
+			donor_list = &thread_current()->donors;
+			//ASSERT(list_size(donor_list) == 0);
+			bool woke_donor 
+				= list_contains(donor_list, &woke->donor_elem);
+			//ASSERT (woke_donor == false);
+			if (woke_donor)
+				{
+					
+					/* Delete the woke up donor from the donor list*/
+					list_remove(&woke->donor_elem);	
+					if (!list_empty(donor_list))
+						thread_set_priority(list_entry 
+											(list_begin (donor_list),
+                      struct thread, donor_elem)->priority);
+					else 		
+						thread_set_priority(thread_current()->base_priority);
+				}		
+		}
 }
+
+
 
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds
