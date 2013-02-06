@@ -265,7 +265,7 @@ thread_unblock (struct thread *t)
 bool 
 higher_priority(const struct list_elem *elem1, 
 	const struct list_elem *elem2,
-	void *aux)
+	void *aux UNUSED)
 {
 	ASSERT(elem1 != NULL);
 	ASSERT(elem2 != NULL);
@@ -659,6 +659,14 @@ threads_ready_or_running (void)
   return ready_threads;
 }
 
+void
+threads_update_recent_cpu (void)
+{
+  thread_action_func *update_recent_cpu = &thread_update_recent_cpu;
+  update_recent_cpu = &thread_update_recent_cpu;
+  thread_foreach (update_recent_cpu,NULL);
+}
+
 /* Update the load_avg value.
 
    NOTE:
@@ -694,10 +702,3 @@ thread_update_recent_cpu (struct thread *t)
   int32_t fp_decay_component = fp_multiplication (fp_decay,t->recent_cpu);
   t->recent_cpu = fp_int_addition (fp_decay_component,(int32_t)t->niceness);
 }
-
-
-
-
-
-
-
