@@ -17,7 +17,7 @@ int32_t fp_int_division (int32_t x, int32_t n);
 
 
 /* Constant f used as part of the fixed point representation */
-int32_t fp_f = 28;
+int32_t fp_f = 16384; /* using 17.14 representation so f = 2^14 */
 
 /* Convert an int to fixed-point */
 int32_t

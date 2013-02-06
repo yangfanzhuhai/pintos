@@ -185,6 +185,13 @@ thread_create (const char *name, int priority,
   if (t == NULL)
     return TID_ERROR;
 
+  /* BSD Setup */
+  if (thread_mlfqs)
+    {
+      thread_update_recent_cpu (t);
+      priority = thread_calculate_bsd_priority (t);
+    }
+
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
@@ -371,20 +378,22 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 { 
-  
-  /* % Luke's implementation */
-  struct thread *curr, *next;
-  curr = thread_current();
-  curr->priority = new_priority;
-  next = list_entry (list_begin(&ready_list), struct thread, elem);
+  /* If BSD scheduler is in use ignore set priority */
+  if (!thread_mlfqs)
+    {
+      /* % Luke's implementation */
+      struct thread *curr, *next;
+      curr = thread_current();
+      curr->priority = new_priority;
+      next = list_entry (list_begin(&ready_list), struct thread, elem);
 
-  if (next != NULL && curr->priority < next->priority)
-  {
-      thread_yield();
-  }
-  /* End */
-  thread_current ()-> priority = new_priority;
-  
+      if (next != NULL && curr->priority < next->priority)
+      {
+          thread_yield();
+      }
+      /* End */
+      thread_current ()-> priority = new_priority;
+    }
 }
 
 /* Returns the current thread's priority. */
@@ -420,7 +429,7 @@ int
 thread_get_recent_cpu (void) 
 {
   int32_t ct_cpu = thread_current ()->recent_cpu;
-  return (int)round_fp_to_int (fp_int_multiplication (load_avg,100));
+  return (int)round_fp_to_int (fp_int_multiplication (ct_cpu,100));
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -637,8 +646,6 @@ allocate_tid (void)
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
 
-
-
 /* Get the number of threads that are either running or ready to run 
    (not including the idle thread). */
 int
@@ -662,9 +669,17 @@ threads_ready_or_running (void)
 void
 threads_update_recent_cpu (void)
 {
+  ASSERT (thread_mlfqs);
   thread_action_func *update_recent_cpu = &thread_update_recent_cpu;
-  update_recent_cpu = &thread_update_recent_cpu;
   thread_foreach (update_recent_cpu,NULL);
+}
+
+void
+threads_update_bsd_priority (void)
+{
+  ASSERT (thread_mlfqs);
+  thread_action_func *update_bsd_priority = &thread_update_bsd_priority;
+  thread_foreach (update_bsd_priority,NULL);
 }
 
 /* Update the load_avg value.
@@ -675,6 +690,7 @@ threads_update_recent_cpu (void)
 void
 update_load_avg (void)
 {
+  ASSERT (thread_mlfqs);
   int32_t ready_threads = (int32_t)threads_ready_or_running ();
 
   int32_t fp_refresh = int_to_fp ((LOAD_AVG_REFRESH_RATE));
@@ -693,12 +709,39 @@ update_load_avg (void)
 }
 
 
-void
-thread_update_recent_cpu (struct thread *t)
+int
+thread_calculate_recent_cpu (struct thread *t)
 {
+  ASSERT (thread_mlfqs);
   int32_t fp_dbl_load_avg = fp_int_multiplication (load_avg,2);
   int32_t fp_dbl_load_avg_plus_1 = fp_int_addition (fp_dbl_load_avg,1);
   int32_t fp_decay = fp_division (fp_dbl_load_avg,fp_dbl_load_avg_plus_1);
   int32_t fp_decay_component = fp_multiplication (fp_decay,t->recent_cpu);
-  t->recent_cpu = fp_int_addition (fp_decay_component,(int32_t)t->niceness);
+  return fp_int_addition (fp_decay_component,(int32_t)t->niceness);
+}
+
+void
+thread_update_recent_cpu (struct thread *t)
+{
+  ASSERT (thread_mlfqs);
+  t->recent_cpu = thread_calculate_recent_cpu (t);
+}
+
+
+int
+thread_calculate_bsd_priority (struct thread *t)
+{
+  ASSERT (thread_mlfqs);
+  int32_t fp_recent_cpu_div_4 = fp_int_division (t->recent_cpu,4);
+  int32_t int_dbl_nice = t->niceness << 1;
+  int32_t int_priority = PRI_MAX - round_fp_to_int (fp_recent_cpu_div_4);
+  int_priority = int_priority - int_dbl_nice;
+  return (int)int_priority;
+}
+
+void
+thread_update_bsd_priority (struct thread *t)
+{
+  ASSERT (thread_mlfqs);
+  t->priority = thread_calculate_bsd_priority (t);
 }

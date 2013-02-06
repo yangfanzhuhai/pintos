@@ -152,7 +152,11 @@ int thread_get_load_avg (void);
 
 int threads_ready_or_running (void);
 void threads_update_recent_cpu (void);
+void threads_update_bsd_priority (void);
 void update_load_avg (void);
+int thread_calculate_recent_cpu (struct thread *t);
 void thread_update_recent_cpu (struct thread *t);
+int thread_calculate_bsd_priority (struct thread *t);
+void thread_update_bsd_priority (struct thread *t);
 
 #endif /* threads/thread.h */

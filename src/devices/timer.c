@@ -204,14 +204,27 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
-  timer_wake ();
 
-  /* Every second */
-  if (ticks % (TIMER_FREQ) == 0)
+  /* BSD operations */
+  if (thread_mlfqs)
     {
-      update_load_avg ();
-      threads_update_recent_cpu();
+
+      /* Every 4th tick */
+      if (timer_ticks () % 4 == 0)
+        {
+          threads_update_bsd_priority ();
+        }
+
+      /* Every second */
+      if (timer_ticks () % (TIMER_FREQ) == 0)
+        {
+          update_load_avg ();
+          threads_update_recent_cpu ();
+        }
     }
+
+  /* Wake sleeping threads */
+  timer_wake ();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
