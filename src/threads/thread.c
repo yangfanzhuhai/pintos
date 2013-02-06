@@ -33,6 +33,26 @@ static struct list ready_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
+
+static struct list bsd_queues;
+
+struct bsd_queue
+{
+  int priority_max;
+  int priority_min;
+  struct list threads;
+  struct list_elem bsdelem;
+}
+
+static void
+initalise_bsd_queue (struct bsd_queue *bsdq)
+{
+  ASSERT(bsdq != NULL);
+  list_init(&bsdq->threads);
+}
+
+
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -665,6 +685,10 @@ threads_ready_or_running (void)
 
   return ready_threads;
 }
+
+
+
+
 
 void
 threads_update_recent_cpu (void)
