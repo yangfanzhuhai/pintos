@@ -39,7 +39,7 @@ struct condition
 void cond_init (struct condition *);
 void cond_wait (struct condition *, struct lock *);
 void cond_signal (struct condition *, struct lock *);
-bool highest_priority(const struct list_elem *, 
+bool higher_priority_sema(const struct list_elem *, 
                       const struct list_elem *, 
                        void *);
 void cond_broadcast (struct condition *, struct lock *);
