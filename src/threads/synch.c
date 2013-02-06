@@ -219,11 +219,29 @@ lock_acquire (struct lock *lock)
 	// donate the current thread's priority to the holder
   if (holder != NULL && holder->priority < thread_get_priority())
     {
-			printf("inside lock_acquire holder!=NULL\n");
+			/*printf("inside lock_acquire holder!=NULL\n");
 			printf("holder thread %s\n", holder->name);
 			printf("holder priority %d\n", holder->priority);
-			printf("current thread %s\n", thread_current()->name);
+			printf("current thread %s\n", thread_current()->name);*/
 			holder->priority = thread_get_priority();      
+
+			/*Delete the existing donor that is waiting for the same lock*/
+			struct list_elem *e;
+			for (e = list_begin(&holder->donors); e != list_end(&holder->donors);
+				e = list_next(e)) 
+				{
+					struct thread *donor_thread;
+					donor_thread = list_entry(e, struct thread, donor_elem);
+					
+					struct list *sema_waiters;
+					sema_waiters = &(&lock->semaphore)->waiters;
+					
+					if (list_contains(sema_waiters, &donor_thread->elem))
+						{
+							list_remove(&donor_thread->donor_elem);
+						}
+				}
+			/*Insert the current donor */
 			list_insert_ordered(&holder->donors, &thread_current()->donor_elem, higher_priority, NULL);
     }
  
@@ -271,14 +289,17 @@ lock_release (struct lock *lock)
 	
 	if (woke != NULL) 
 		{
+			//printf("lock_release woke %s\n", woke->name);
 			donor_list = &thread_current()->donors;
-			//ASSERT(list_size(donor_list) == 0);
+			//printf("donor_list size %d\n", list_size(donor_list));
+			
 			bool woke_donor 
 				= list_contains(donor_list, &woke->donor_elem);
 			//ASSERT (woke_donor == false);
 			if (woke_donor)
-				{
-					
+				{ 
+					ASSERT (list_size(donor_list) != 0);
+					//printf("donor name: %s\n", woke->name);
 					/* Delete the woke up donor from the donor list*/
 					list_remove(&woke->donor_elem);	
 					if (!list_empty(donor_list))
@@ -289,6 +310,7 @@ lock_release (struct lock *lock)
 						thread_set_priority(thread_current()->base_priority);
 				}		
 		}
+	
 }
 
 
