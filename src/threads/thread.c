@@ -276,6 +276,21 @@ higher_priority(const struct list_elem *elem1,
 	return thread1->priority > thread2->priority;
 }
 
+/* list_less_func() for list_max() 
+   threads with lower priority comes first */
+bool 
+list_lower_priority(const struct list_elem *elem1, 
+	const struct list_elem *elem2,
+	void *aux UNUSED)
+{
+	ASSERT(elem1 != NULL);
+	ASSERT(elem2 != NULL);
+	struct thread *thread1 
+		= list_entry (elem1, struct thread, elem);
+	struct thread *thread2 
+		= list_entry (elem2, struct thread, elem);
+	return thread1->priority < thread2->priority;
+}
 
 /* Returns the name of the running thread. */
 const char *
@@ -371,39 +386,32 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 { 
-
-  //printf("new priority %d\n", new_priority);
   struct thread *curr, *next;
   curr = thread_current();
   curr->base_priority = new_priority;
   if (list_empty(&curr->donors) || 
       curr->base_priority > curr->priority)
-     curr->priority = curr->base_priority;
-  next = list_entry (list_begin(&ready_list), struct thread, elem);
-  
-    if (next != NULL && curr->priority < next->priority)
-  {
-      thread_yield();
-  }
+    thread_set_apparent_priority(curr->base_priority);
 }
 
 /* Sets the current thread's apparent_priority to NEW_PRIORITY. */
 void
 thread_set_apparent_priority (int new_priority) 
 { 
-  
-	//printf("new priority %d\n", new_priority);
-  
   /* % Luke's implementation */
   struct thread *curr, *next;
   curr = thread_current();
   curr->priority = new_priority;
+  
+  /* Recursively updates the current thread's donees 
+      of the new priority. */
+	update_priority_donation(thread_current());
+	
   next = list_entry (list_begin(&ready_list), struct thread, elem);
-
   if (next != NULL && curr->priority < next->priority)
-  {
+    {
       thread_yield();
-  }
+    }
   /* End */
  
 }
@@ -536,6 +544,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->base_priority = priority;
   /* Luke's implementation */
   list_init (&t->donors);
+  list_init (&t->donees);
   /* End */
 
   old_level = intr_disable ();

@@ -67,9 +67,7 @@ sema_down (struct semaphore *sema)
 
   while (sema->value == 0) 
     {
-      list_insert_ordered(&sema->waiters, 
-        &thread_current ()->elem, higher_priority, NULL);
-
+      list_push_front(&sema->waiters, &thread_current ()->elem);
       thread_block ();
     }
     
@@ -119,8 +117,10 @@ sema_up (struct semaphore *sema)
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) 
     {
-      next = list_entry (list_pop_front (&sema->waiters), 
-        struct thread, elem);
+      //struct list_elem *e;
+      //e = list_min (&sema->waiters, higher_priority, NULL);
+      list_sort (&sema->waiters, higher_priority, NULL);
+      next = list_entry ( list_pop_front(&sema->waiters), struct thread, elem);
       thread_unblock (next);
     }
     
@@ -128,7 +128,6 @@ sema_up (struct semaphore *sema)
   
   if (next != NULL && next-> priority > thread_get_priority())
     {
-      //printf("Thread %s yielded in sema up.\n", thread_current()->name);
       thread_yield();
     }
   
@@ -172,7 +171,24 @@ sema_test_helper (void *sema_)
       sema_up (&sema[1]);
     }
 }
-
+
+/* Initialises the donor_elem. */
+void
+donor_init(struct donor_elem *donor_e,
+           struct thread *d, struct lock *l)
+{
+  donor_e->donor = d;
+  donor_e->lock  = l;
+}
+
+/* Initialises the donee_elem. */
+void
+donee_init(struct donee_elem *donee_e,
+           struct thread *d, struct lock *l)
+{
+  donee_e->donee = d;
+  donee_e->lock  = l;
+}
 /* Initializes LOCK.  A lock can be held by at most a single
    thread at any given time.  Our locks are not "recursive", that
    is, it is an error for the thread currently holding a lock to
@@ -197,6 +213,100 @@ lock_init (struct lock *lock)
   sema_init (&lock->semaphore, 1);
 }
 
+/* Deletes all holder's existing donor waiting for lock. */
+void
+lock_holder_delete_donor(struct thread *holder, 
+                        struct lock *lock)
+{
+  struct list_elem *e;
+	for (e = list_begin(&holder->donors); e != list_end(&holder->donors);
+	    	e = list_next(e)) 
+		{
+		  struct donor_elem *donor_e;
+		  donor_e = list_entry(e, struct donor_elem, elem);
+				  
+		  if (donor_e->lock == lock) 
+		    {
+		      list_remove(&donor_e->elem);
+		      /* Deletes the holder from the donor's donee list. */
+		      delete_donee(donor_e->donor, holder, lock);
+		    }
+		}
+}
+
+/* Deletes the donee_thread from the donor_thread's donee list. */
+void
+delete_donee(struct thread *donor_thread, 
+          struct thread *donee_thread,
+          struct lock *lock)
+{
+  struct list_elem *e;
+	for (e = list_begin(&donor_thread->donees); 
+	      e != list_end(&donor_thread->donees);
+	    	e = list_next(e)) 
+		{
+		  struct donee_elem *donee_e;
+		  donee_e = list_entry(e, struct donee_elem, elem);
+				  
+		  if (donee_e->lock == lock && 
+		      donee_e->donee == donee_thread) 
+		    {
+		      list_remove(&donee_e->elem);
+		    }
+		}
+}
+
+/* Deletes the donor_thread from the donee_thread's donor list. */
+bool
+delete_donor(struct thread *donor_thread, 
+          struct thread *donee_thread,
+          struct lock *lock)
+{
+  struct list_elem *e;
+  bool result = false;
+  
+	for (e = list_begin(&donee_thread->donors); 
+	      e != list_end(&donee_thread->donors);
+	    	e = list_next(e)) 
+		{
+		  struct donor_elem *donor_e;
+		  donor_e = list_entry(e, struct donor_elem, elem);
+				  
+		  if (donor_e->lock == lock && 
+		      donor_e->donor == donor_thread) 
+		    {
+		      list_remove(&donor_e->elem);
+		      result = true;
+		      break;
+		    }
+		}
+  return result;
+}
+
+void
+update_priority_donation(struct thread *t)
+{
+
+  struct list_elem *e;
+  
+	for (e = list_begin(&t->donees); 
+	      e != list_end(&t->donees);
+	    	e = list_next(e)) 
+		{
+		  struct donee_elem *donee_e;
+		  donee_e = list_entry(e, struct donee_elem, elem);
+				  
+      if (donee_e->donee->priority < t->priority) 
+        {
+          donee_e->donee->priority = t->priority;
+          if (!list_empty(&donee_e->donee->donees))
+            {
+              update_priority_donation(donee_e->donee);
+            }
+        }
+		}
+}
+
 /* Acquires LOCK, sleeping until it becomes available if
    necessary.  The lock must not already be held by the current
    thread.
@@ -216,34 +326,29 @@ lock_acquire (struct lock *lock)
   struct thread *holder;
   holder = lock->holder;
 
-  //Case where lock is held by a thread with lower priority
-	// donate the current thread's priority to the holder
+  /* When lock is held by a thread with lower priority */
   if (holder != NULL && holder->priority < thread_get_priority())
     {
-			/*printf("inside lock_acquire holder!=NULL\n");
-			printf("holder thread %s\n", holder->name);
-			printf("holder priority %d\n", holder->priority);
-			printf("current thread %s\n", thread_current()->name);*/
-			holder->priority = thread_get_priority();      
-
-			/*Delete the existing donor that is waiting for the same lock*/
-			struct list_elem *e;
-			for (e = list_begin(&holder->donors); e != list_end(&holder->donors);
-				e = list_next(e)) 
-				{
-					struct thread *donor_thread;
-					donor_thread = list_entry(e, struct thread, donor_elem);
-					
-					struct list *sema_waiters;
-					sema_waiters = &(&lock->semaphore)->waiters;
-					
-					if (list_contains(sema_waiters, &donor_thread->elem))
-						{
-							list_remove(&donor_thread->donor_elem);
-						}
-				}
-			/*Insert the current donor */
-			list_insert_ordered(&holder->donors, &thread_current()->donor_elem, higher_priority, NULL);
+			/* The current thread donates its priority to the holder. */
+			holder->priority = thread_get_priority();   
+			
+			struct donor_elem donor;
+			struct donee_elem donee;
+      
+      donor_init(&donor, thread_current(), lock);
+      donee_init(&donee, holder, lock);
+      
+			/* Deletes the existing donor that is waiting for the same lock*/
+			lock_holder_delete_donor(holder, lock);
+			
+			/* Insert the current thread to the holder's donor list. */
+			list_push_front(&holder->donors, &(&donor)->elem);
+			
+			/* Insert the holder to the current thread's donee list. */
+			list_push_front(&thread_current()->donees, &(&donee)->elem);
+			
+			/* Recursively updates the holder's donees of the new priority. */
+			update_priority_donation(holder);
     }
  
   sema_down (&lock->semaphore);
@@ -290,36 +395,29 @@ lock_release (struct lock *lock)
 	
 	if (woke != NULL) 
 		{
-			//printf("lock_release woke %s\n", woke->name);
 			donor_list = &thread_current()->donors;
-			//printf("donor_list size %d\n", list_size(donor_list));
-			
-			bool woke_donor 
-				= list_contains(donor_list, &woke->donor_elem);
+			/* If the woke up thread is a donor, delete it from 
+			  the current thread's donor list*/
+			bool woke_donor	=	delete_donor(woke, thread_current(), lock);
 			
 			if (woke_donor)
-				{ 
-					ASSERT (list_size(donor_list) != 0);
-					//printf("woke donor name: %s\n", woke->name);
-					
-					/* Delete the woke up donor from the donor list*/
-					list_remove(&woke->donor_elem);	
-					//printf("donor_list size %d\n", list_size(donor_list));
+        {
+          /* Deletes the current thread from the woke up donor's 
+             donee list. */
+          delete_donee(woke, thread_current(), lock);
+          
 					if (!list_empty(donor_list))
-						thread_set_apparent_priority(list_entry 
-											(list_begin (donor_list),
-                      struct thread, donor_elem)->priority);
+					  {
+					    struct thread *next_donor 
+					      = list_entry (list_begin (donor_list),
+                      struct donor_elem, elem) -> donor;
+						  thread_set_apparent_priority(next_donor->priority);
+            }
 					else
-					  { 		
-					  //printf("reseting to base priority\n");
 						thread_set_apparent_priority(thread_current()->base_priority);
-						}
 				}		
 		}
-	
 }
-
-
 
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds
@@ -331,7 +429,7 @@ lock_held_by_current_thread (const struct lock *lock)
 
   return lock->holder == thread_current ();
 }
-
+
 /* One semaphore in a list. */
 struct semaphore_elem 
   {

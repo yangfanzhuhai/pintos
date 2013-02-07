@@ -24,6 +24,41 @@ struct lock
     struct semaphore semaphore; /* Binary semaphore controlling access. */
   };
 
+/* Priority donation. */
+
+/* One donor in a list. */
+struct donor_elem 
+  {
+    struct list_elem elem;          /* List element. */
+    struct thread *donor;           /* This donor thread. */
+    struct lock *lock;              /* Lock that donor tries
+                                        to acquire. */
+  };
+
+/* One donee in a list. */
+struct donee_elem 
+  {
+    struct list_elem elem;          /* List element. */
+    struct thread *donee;           /* This donee thread. */
+    struct lock *lock;              /* Lock held by donee. */
+  };
+  
+void donor_init(struct donor_elem *,
+           struct thread *, struct lock *);          
+void donee_init(struct donee_elem *,
+           struct thread *, struct lock *);
+void lock_holder_delete_donor(struct thread *, 
+                        struct lock *);    
+void delete_donee(struct thread *, struct thread *,
+          struct lock *);
+void delete_donee(struct thread *, struct thread *,
+          struct lock *);      
+       
+bool delete_donor(struct thread *, struct thread *,
+          struct lock *);
+
+void update_priority_donation(struct thread *);
+         
 void lock_init (struct lock *);
 void lock_acquire (struct lock *);
 bool lock_try_acquire (struct lock *);

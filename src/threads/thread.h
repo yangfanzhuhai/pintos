@@ -96,12 +96,13 @@ struct thread
 
     /* Luke's Implementation */
     int base_priority;
-    struct list donors;
+    struct list donors;                 /* Donor list. */
+    struct list donees;                 /* Donee list. */
     /* End */    
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-    struct list_elem donor_elem;        /* List element for donors list. */
+    struct list_elem donor_elem;
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -130,7 +131,9 @@ void thread_unblock (struct thread *);
 bool higher_priority(const struct list_elem *, 
                       const struct list_elem *, 
                        void *);
-
+bool list_lower_priority(const struct list_elem *, 
+                      const struct list_elem *, 
+                       void *);
 struct thread *thread_current (void);
 tid_t thread_tid (void);
 const char *thread_name (void);
