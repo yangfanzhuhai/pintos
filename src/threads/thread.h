@@ -100,6 +100,7 @@ struct thread
     int niceness;                       /* Niceness. */
     int32_t recent_cpu;                 /* recent_cpu */
     int64_t wake_up_tick;               /* Tick when this thread will wake up */
+    struct list_elem bsdelem;           /* List element for bsd queue. */
     struct list_elem sleepelem;         /* List element for sleeping threads. */
     struct list_elem allelem;           /* List element for all threads list. */
 
@@ -164,12 +165,17 @@ void threads_update_recent_cpu (void);
 void threads_update_bsd_priority (void);
 void update_load_avg (void);
 int thread_calculate_recent_cpu (struct thread *t);
-void thread_update_recent_cpu (struct thread *t);
+void thread_update_recent_cpu (struct thread *t, void *aux UNUSED);
 int thread_calculate_bsd_priority (struct thread *t);
-void thread_update_bsd_priority (struct thread *t);
+void thread_update_bsd_priority (struct thread *t, void *aux UNUSED);
 
 
 void initalise_bsd_queue (struct bsd_queue *bsdq);
 void initalise_bsd_queues (struct list *bsdqs);
 
+/*
+bool list_less_bsd_queue (const struct list_elem *elem1,
+                        const struct list_elem *elem2,
+                        void *aux UNUSED);
+*/
 #endif /* threads/thread.h */

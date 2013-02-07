@@ -15,7 +15,6 @@
 #include "userprog/process.h"
 #endif
 #include "threads/fixed-point.h"
-#include <stdlib.h>
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -40,7 +39,6 @@ static struct list all_list;
 static struct list bsd_queues;
 
 
-
 void
 initalise_bsd_queue (struct bsd_queue *bsdq)
 {
@@ -48,6 +46,22 @@ initalise_bsd_queue (struct bsd_queue *bsdq)
   list_init(&bsdq->threads);
 }
 
+/*
+bool 
+list_less_bsd_queue (const struct list_elem *elem1,
+                        const struct list_elem *elem2,
+                        void *aux UNUSED)
+{
+  ASSERT(elem1 != NULL);
+	ASSERT(elem2 != NULL);
+  struct bsd_queue *bsd_queue1  
+		= list_entry (elem1, struct bsd_queue, bsdelem);
+	struct bsd_queue *bsd_queue2 
+		= list_entry (elem2, struct bsd_queue, bsdelem);
+
+  return bsd_queue1->priority_min < bsd_queue2->priority_min;
+}
+*/
 
 void
 initalise_bsd_queues (struct list *bsdqs)
@@ -60,12 +74,18 @@ initalise_bsd_queues (struct list *bsdqs)
   int i;
   for (i = PRI_MIN; i < PRI_MAX; i += BSD_PRIORITIES_PER_QUEUE)
     {
-      struct bsd_queue *bsdq = malloc (sizeof (struct bsd_queue));
-      initalise_bsd_queue (bsdq);
-      bsdq->priority_min = i;
-      bsdq->priority_max = i + BSD_PRIORITIES_PER_QUEUE - 1;
+      struct bsd_queue bsdq;
+      initalise_bsd_queue (&bsdq);
+      bsdq.priority_min = i;
+      bsdq.priority_max = i + BSD_PRIORITIES_PER_QUEUE - 1;
+      
+      /* Must push front so highest priority queue is first */
+      list_push_front (bsdqs, &bsdq.bsdelem);
     }
 }
+
+
+
 
 
 
@@ -226,7 +246,7 @@ thread_create (const char *name, int priority,
   /* BSD Setup */
   if (thread_mlfqs)
     {
-      thread_update_recent_cpu (t);
+      thread_update_recent_cpu (t,NULL);
       priority = thread_calculate_bsd_priority (t);
     }
 
@@ -590,10 +610,33 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-  if (list_empty (&ready_list))
-    return idle_thread;
-  else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  /* If BSD scheduler is enabled use bsd queue */
+  //if (thread_mlfqs)
+  //  {  
+  //    struct list_elem *e;
+
+      /* Return the thread with the highest priority */
+  //    for (e = list_begin (&bsd_queues); e != list_end (&bsd_queues);
+  //         e = list_next (e))
+  //      {
+  //        struct bsd_queue *bsdq = list_entry (e, struct bsd_queue, bsdelem);
+  //        if (!list_empty (&bsdq->threads))
+  //          {
+  //            return list_entry (list_begin (&bsdq->threads), 
+  //                struct thread, bsdelem);
+  //          }
+  //      }
+
+      /* If we reached here no threads were found */
+  //    return idle_thread;
+  //  }
+  //else
+  //  {
+      if (list_empty (&ready_list))
+        return idle_thread;
+      else
+        return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  //  }  
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -749,7 +792,7 @@ thread_calculate_recent_cpu (struct thread *t)
 }
 
 void
-thread_update_recent_cpu (struct thread *t)
+thread_update_recent_cpu (struct thread *t, void *aux UNUSED)
 {
   ASSERT (thread_mlfqs);
   t->recent_cpu = thread_calculate_recent_cpu (t);
@@ -768,7 +811,7 @@ thread_calculate_bsd_priority (struct thread *t)
 }
 
 void
-thread_update_bsd_priority (struct thread *t)
+thread_update_bsd_priority (struct thread *t, void *aux UNUSED)
 {
   ASSERT (thread_mlfqs);
   t->priority = thread_calculate_bsd_priority (t);
@@ -779,14 +822,12 @@ void
 threads_update_recent_cpu (void)
 {
   ASSERT (thread_mlfqs);
-  thread_action_func *update_recent_cpu = &thread_update_recent_cpu;
-  thread_foreach (update_recent_cpu,NULL);
+  thread_foreach (thread_update_recent_cpu,NULL);
 }
 
 void
 threads_update_bsd_priority (void)
 {
   ASSERT (thread_mlfqs);
-  thread_action_func *update_bsd_priority = &thread_update_bsd_priority;
-  thread_foreach (update_bsd_priority,NULL);
+  thread_foreach (thread_update_bsd_priority,NULL);
 }
