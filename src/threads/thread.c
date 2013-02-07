@@ -15,6 +15,7 @@
 #include "userprog/process.h"
 #endif
 #include "threads/fixed-point.h"
+#include <stdlib.h>
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -22,6 +23,8 @@
 #define THREAD_MAGIC 0xcd6abf4b
 
 #define LOAD_AVG_REFRESH_RATE (60)
+
+#define BSD_PRIORITIES_PER_QUEUE (4)
 
 int32_t load_avg = 0;
 
@@ -36,19 +39,32 @@ static struct list all_list;
 
 static struct list bsd_queues;
 
-struct bsd_queue
-{
-  int priority_max;
-  int priority_min;
-  struct list threads;
-  struct list_elem bsdelem;
-}
 
-static void
+
+void
 initalise_bsd_queue (struct bsd_queue *bsdq)
 {
   ASSERT(bsdq != NULL);
   list_init(&bsdq->threads);
+}
+
+
+void
+initalise_bsd_queues (struct list *bsdqs)
+{
+  /* Assert priority range is divisible by priorities per queue */
+  ASSERT((((PRI_MAX - PRI_MIN) + 1) % BSD_PRIORITIES_PER_QUEUE) == 0);
+
+  list_init(bsdqs);
+
+  int i;
+  for (i = PRI_MIN; i < PRI_MAX; i += BSD_PRIORITIES_PER_QUEUE)
+    {
+      struct bsd_queue *bsdq = malloc (sizeof (struct bsd_queue));
+      initalise_bsd_queue (bsdq);
+      bsdq->priority_min = i;
+      bsdq->priority_max = i + BSD_PRIORITIES_PER_QUEUE - 1;
+    }
 }
 
 
@@ -117,6 +133,8 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+
+  initalise_bsd_queues (&bsd_queues);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -690,21 +708,7 @@ threads_ready_or_running (void)
 
 
 
-void
-threads_update_recent_cpu (void)
-{
-  ASSERT (thread_mlfqs);
-  thread_action_func *update_recent_cpu = &thread_update_recent_cpu;
-  thread_foreach (update_recent_cpu,NULL);
-}
 
-void
-threads_update_bsd_priority (void)
-{
-  ASSERT (thread_mlfqs);
-  thread_action_func *update_bsd_priority = &thread_update_bsd_priority;
-  thread_foreach (update_bsd_priority,NULL);
-}
 
 /* Update the load_avg value.
 
@@ -768,4 +772,21 @@ thread_update_bsd_priority (struct thread *t)
 {
   ASSERT (thread_mlfqs);
   t->priority = thread_calculate_bsd_priority (t);
+}
+
+
+void
+threads_update_recent_cpu (void)
+{
+  ASSERT (thread_mlfqs);
+  thread_action_func *update_recent_cpu = &thread_update_recent_cpu;
+  thread_foreach (update_recent_cpu,NULL);
+}
+
+void
+threads_update_bsd_priority (void)
+{
+  ASSERT (thread_mlfqs);
+  thread_action_func *update_bsd_priority = &thread_update_bsd_priority;
+  thread_foreach (update_bsd_priority,NULL);
 }

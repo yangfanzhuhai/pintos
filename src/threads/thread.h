@@ -14,6 +14,15 @@ enum thread_status
     THREAD_DYING        /* About to be destroyed. */
   };
 
+struct bsd_queue
+{
+  int priority_max;
+  int priority_min;
+  struct list threads;
+  struct list_elem bsdelem;
+};
+
+
 /* Thread identifier type.
    You can redefine this to whatever type you like. */
 typedef int tid_t;
@@ -158,5 +167,9 @@ int thread_calculate_recent_cpu (struct thread *t);
 void thread_update_recent_cpu (struct thread *t);
 int thread_calculate_bsd_priority (struct thread *t);
 void thread_update_bsd_priority (struct thread *t);
+
+
+void initalise_bsd_queue (struct bsd_queue *bsdq);
+void initalise_bsd_queues (struct list *bsdqs);
 
 #endif /* threads/thread.h */
