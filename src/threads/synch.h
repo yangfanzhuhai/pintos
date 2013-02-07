@@ -17,12 +17,7 @@ bool sema_try_down (struct semaphore *);
 struct thread * sema_up (struct semaphore *);
 void sema_self_test (void);
 
-/* Lock. */
-struct lock 
-  {
-    struct thread *holder;      /* Thread holding lock (for debugging). */
-    struct semaphore semaphore; /* Binary semaphore controlling access. */
-  };
+
 
 /* Priority donation. */
 
@@ -47,18 +42,21 @@ void donor_init(struct donor_elem *,
            struct thread *, struct lock *);          
 void donee_init(struct donee_elem *,
            struct thread *, struct lock *);
-void lock_holder_delete_donor(struct thread *, 
+void lock_holder_delete_donors(struct thread *, 
                         struct lock *);    
-void delete_donee(struct thread *, struct thread *,
+void thread_delete_donee(struct thread *, struct thread *,
+          struct lock *);  
+bool thread_delete_donor(struct thread *, struct thread *,
           struct lock *);
-void delete_donee(struct thread *, struct thread *,
-          struct lock *);      
-       
-bool delete_donor(struct thread *, struct thread *,
-          struct lock *);
-
 void update_priority_donation(struct thread *);
-         
+
+/* Lock. */
+struct lock 
+  {
+    struct thread *holder;      /* Thread holding lock (for debugging). */
+    struct semaphore semaphore; /* Binary semaphore controlling access. */
+  };
+  
 void lock_init (struct lock *);
 void lock_acquire (struct lock *);
 bool lock_try_acquire (struct lock *);
@@ -74,7 +72,7 @@ struct condition
 void cond_init (struct condition *);
 void cond_wait (struct condition *, struct lock *);
 void cond_signal (struct condition *, struct lock *);
-bool higher_priority_sema(const struct list_elem *, 
+bool cond_higher_priority (const struct list_elem *, 
                       const struct list_elem *, 
                        void *);
 void cond_broadcast (struct condition *, struct lock *);

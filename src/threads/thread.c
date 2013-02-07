@@ -162,11 +162,7 @@ thread_print_stats (void)
    before thread_create() returns.  Contrariwise, the original
    thread may run for any amount of time before the new thread is
    scheduled.  Use a semaphore or some other form of
-   synchronization if you need to ensure ordering.
-
-   The code provided sets the new thread's `priority' member to
-   PRIORITY, but no actual priority scheduling is implemented.
-   Priority scheduling is the goal of Problem 1-3. */
+   synchronization if you need to ensure ordering. */
 tid_t
 thread_create (const char *name, int priority,
                thread_func *function, void *aux) 
@@ -214,11 +210,10 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
-
-  if (t->priority > thread_current ()->priority) 
-    {
-      thread_yield();
-    }
+  /* If thread t has higher priority, the running thread 
+     yields to it. */
+  thread_try_yield (t);
+  
   return tid;
 }
 
@@ -255,7 +250,7 @@ thread_unblock (struct thread *t)
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
   list_insert_ordered (&ready_list, &t->elem, 
-    higher_priority, NULL);
+    thread_higher_priority, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -263,7 +258,7 @@ thread_unblock (struct thread *t)
 /* list_less_func() for list_insert_ordered() 
    threads with higher priority comes first */
 bool 
-higher_priority(const struct list_elem *elem1, 
+thread_higher_priority(const struct list_elem *elem1, 
 	const struct list_elem *elem2,
 	void *aux UNUSED)
 {
@@ -346,6 +341,15 @@ thread_exit (void)
   NOT_REACHED ();
 }
 
+/* If the current thread has lower priority than a thread, it 
+  yields. */
+void
+thread_try_yield(struct thread *t)
+{
+  if (t != NULL && t->priority > thread_get_priority ())
+    thread_yield ();
+}
+
 /* Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
 void
@@ -358,8 +362,8 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_insert_ordered(&ready_list, &cur->elem, 
-      higher_priority, NULL);
+    list_insert_ordered (&ready_list, &cur->elem, 
+      thread_higher_priority, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -386,40 +390,53 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 { 
-  struct thread *curr, *next;
+  struct thread *curr;
   curr = thread_current();
   curr->base_priority = new_priority;
-  if (list_empty(&curr->donors) || 
-      curr->base_priority > curr->priority)
+  
+  if ((list_empty(&curr->donors) || 
+      curr->base_priority > curr->priority))
     thread_set_apparent_priority(curr->base_priority);
 }
 
-/* Sets the current thread's apparent_priority to NEW_PRIORITY. */
+/* Sets the current thread's apparent priority to NEW_PRIORITY. */
 void
 thread_set_apparent_priority (int new_priority) 
 { 
-  /* % Luke's implementation */
-  struct thread *curr, *next;
+  ASSERT (!thread_mlfqs);
+  
+  struct thread *curr;
+  struct thread *next;
+  
   curr = thread_current();
   curr->priority = new_priority;
   
   /* Recursively updates the current thread's donees 
-      of the new priority. */
-	update_priority_donation(thread_current());
+     of the new priority. */
+	update_priority_donation(curr);
 	
-  next = list_entry (list_begin(&ready_list), struct thread, elem);
-  if (next != NULL && curr->priority < next->priority)
-    {
-      thread_yield();
-    }
-  /* End */
- 
+	next = list_entry (list_begin(&ready_list), 
+                  struct thread, elem);
+
+  /* If the running thread no longer has the highest priority, 
+     it yields. */
+  thread_try_yield (next);
 }
 
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) 
 {
+  return thread_current ()->priority;
+}
+
+/* Yangfan: Is this required? */
+/* Returns the current thread's apparent priority. */
+int
+thread_get_apparent_priority (void) 
+{
+  ASSERT (!thread_mlfqs);
+  
   return thread_current ()->priority;
 }
 
@@ -537,15 +554,17 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
-  t->priority = priority;
+  
   t->magic = THREAD_MAGIC;
 
-  /* Luke's Implementation */
-  t->base_priority = priority;
-  /* Luke's implementation */
-  list_init (&t->donors);
-  list_init (&t->donees);
-  /* End */
+  /* Priority scheduling */
+  //if (!thread_mlfqs) 
+    {
+      t->priority = priority;
+      t->base_priority = priority;
+      list_init (&t->donors);
+      list_init (&t->donees);
+    }
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

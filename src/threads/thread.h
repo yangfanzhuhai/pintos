@@ -94,15 +94,14 @@ struct thread
     struct list_elem sleepelem;         /* List element for sleeping threads. */
     struct list_elem allelem;           /* List element for all threads list. */
 
-    /* Luke's Implementation */
+    /* Priority Scheduling */
     int base_priority;
     struct list donors;                 /* Donor list. */
-    struct list donees;                 /* Donee list. */
-    /* End */    
+    struct list donees;                 /* Donee list. */   
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-    struct list_elem donor_elem;
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -128,7 +127,7 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
-bool higher_priority(const struct list_elem *, 
+bool thread_higher_priority(const struct list_elem *, 
                       const struct list_elem *, 
                        void *);
 bool list_lower_priority(const struct list_elem *, 
@@ -139,6 +138,7 @@ tid_t thread_tid (void);
 const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
+void thread_try_yield(struct thread *);
 void thread_yield (void);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
@@ -146,6 +146,7 @@ typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
+int thread_get_apparent_priority (void);
 void thread_set_priority (int);
 void thread_set_apparent_priority (int);
 
