@@ -15,6 +15,7 @@
 #include "userprog/process.h"
 #endif
 #include "threads/fixed-point.h"
+#include <stdlib.h>
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -41,33 +42,46 @@ static struct list bsd_queues;
 
 
 void
-initalise_mlfqs_queue (struct bsd_queue *bsdq)
+initialise_mlfqs_queue (struct bsd_queue *bsdq)
 {
   ASSERT(bsdq != NULL);
   list_init(&bsdq->threads);
 }
 
 void
-initalise_mlfqs_queues (struct list *bsdqs)
+initialise_mlfqs_queues (void)
 {
+
+  ASSERT (intr_get_level () == INTR_OFF);
   /* Assert priority range is divisible by priorities per queue */
   ASSERT((((PRI_MAX - PRI_MIN) + 1) % BSD_PRIORITIES_PER_QUEUE) == 0);
 
-  list_init(bsdqs);
-  printf ("initialise bsdqs size %d\n", list_size(bsdqs));
+  list_init(&bsd_queues);
+  
+  printf("PRI_MIN %d\n", PRI_MIN);
+  printf("PRI_MAX %d\n", PRI_MAX);
+  
+  printf ("initialise bsdqs size %d\n", list_size(&bsd_queues));
   int i;
   for (i = PRI_MIN; i < PRI_MAX; i += BSD_PRIORITIES_PER_QUEUE)
     {
       printf ("i %d\n", i);
-      struct bsd_queue bsdq;
-      initalise_mlfqs_queue (&bsdq);
-      bsdq.priority_min = i;
-      bsdq.priority_max = i + BSD_PRIORITIES_PER_QUEUE - 1;
+      struct bsd_queue *bsdq = malloc (sizeof(struct bsd_queue));
+      printf("bsdq pointer %p\n", &bsdq);
+      
+      printf ("1initialise bsdqs size %d\n", list_size(&bsd_queues));
+      initialise_mlfqs_queue (bsdq);
+      printf ("2initialise bsdqs size %d\n", list_size(&bsd_queues));
+      bsdq->priority_min = i;
+      printf ("3initialise bsdqs size %d\n", list_size(&bsd_queues));
+      bsdq->priority_max = i + BSD_PRIORITIES_PER_QUEUE - 1;
+      printf ("4initialise bsdqs size %d\n", list_size(&bsd_queues));
       
       /* Must push front so highest priority queue is first */
-      list_push_back (bsdqs, & (&bsdq)->bsdelem);
+      list_push_front (&bsd_queues, &bsdq->bsdelem);
+      printf ("5initialise bsdqs size %d\n", list_size(&bsd_queues));
     }
-  printf ("after initialise bsdqs size %d\n", list_size(bsdqs));
+  printf ("after initialise bsdqs size %d\n", list_size(&bsd_queues));
 }
 
 void
@@ -197,7 +211,7 @@ thread_init (void)
 
   if (thread_mlfqs)
     {
-      initalise_mlfqs_queues (&bsd_queues);
+      initialise_mlfqs_queues ();
     }
   else
     {
