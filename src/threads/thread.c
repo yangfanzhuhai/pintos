@@ -28,6 +28,9 @@
 
 int32_t load_avg = 0;
 
+static struct bsd_queue
+    queue_arr[(PRI_MAX - PRI_MIN + 1) / BSD_PRIORITIES_PER_QUEUE];
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -35,6 +38,7 @@ static struct list ready_list;
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
+
 
 
 static struct list bsd_queues;
@@ -59,13 +63,13 @@ initalise_mlfqs_queues (struct list *bsdqs)
   for (i = PRI_MIN; i < PRI_MAX; i += BSD_PRIORITIES_PER_QUEUE)
     {
       printf ("i %d\n", i);
-      struct bsd_queue bsdq;
-      initalise_mlfqs_queue (&bsdq);
-      bsdq.priority_min = i;
-      bsdq.priority_max = i + BSD_PRIORITIES_PER_QUEUE - 1;
+      struct bsd_queue *bsdq = &queue_arr[i / BSD_PRIORITIES_PER_QUEUE];
+      initalise_mlfqs_queue (bsdq);
+      bsdq->priority_min = i;
+      bsdq->priority_max = i + BSD_PRIORITIES_PER_QUEUE - 1;
       
       /* Must push front so highest priority queue is first */
-      list_push_back (bsdqs, & (&bsdq)->bsdelem);
+      list_push_front (bsdqs, &bsdq->bsdelem);
     }
   printf ("after initialise bsdqs size %d\n", list_size(bsdqs));
 }
@@ -111,7 +115,7 @@ thread_remove_mlfqs (struct thread *t)
     {
       struct bsd_queue *bsdq = list_entry (e, struct bsd_queue, bsdelem);
 
-      printf ("%d\n", list_size (&bsdq->threads));
+      printf ("thread_remove_mlfqs list size of: %d\n", list_size (&bsdq->threads));
 
       /* For each thread in the current bsd queue */
       for (e2 = list_begin (&bsdq->threads); e2 != list_end (&bsdq->threads);
@@ -660,7 +664,10 @@ init_thread (struct thread *t, const char *name, int priority)
   if (thread_mlfqs)
     {
       t->recent_cpu = 0;
-      thread_update_mlfqs_priority (t,NULL);
+      if (!idle_thread)
+        {
+          thread_update_mlfqs_priority (t,NULL);
+        }
     }
   else
     {
