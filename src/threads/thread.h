@@ -172,8 +172,8 @@ int  thread_calculate_mlfqs_priority (struct thread *t);
 void thread_update_mlfqs_priority (struct thread *t, void *aux UNUSED);
 void threads_update_mlfqs_priority (void);
 
-void initalise_mlfqs_queue (struct bsd_queue *bsdq);
-void initalise_mlfqs_queues (struct list *bsdqs);
+void initialise_mlfqs_queue (struct bsd_queue *bsdq);
+void initialise_mlfqs_queues (void);
 
 void thread_insert_mlfqs (struct thread *t);
 void thread_remove_mlfqs (struct thread *t);

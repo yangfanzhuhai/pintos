@@ -15,6 +15,7 @@
 #include "userprog/process.h"
 #endif
 #include "threads/fixed-point.h"
+#include <stdlib.h>
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -45,20 +46,26 @@ static struct list bsd_queues;
 
 
 void
-initalise_mlfqs_queue (struct bsd_queue *bsdq)
+initialise_mlfqs_queue (struct bsd_queue *bsdq)
 {
   ASSERT(bsdq != NULL);
   list_init(&bsdq->threads);
 }
 
 void
-initalise_mlfqs_queues (struct list *bsdqs)
+initialise_mlfqs_queues (void)
 {
+
+  ASSERT (intr_get_level () == INTR_OFF);
   /* Assert priority range is divisible by priorities per queue */
   ASSERT((((PRI_MAX - PRI_MIN) + 1) % BSD_PRIORITIES_PER_QUEUE) == 0);
 
-  list_init(bsdqs);
-  printf ("initialise bsdqs size %d\n", list_size(bsdqs));
+  list_init(&bsd_queues);
+  
+  printf("PRI_MIN %d\n", PRI_MIN);
+  printf("PRI_MAX %d\n", PRI_MAX);
+  
+  printf ("initialise bsdqs size %d\n", list_size(&bsd_queues));
   int i;
   for (i = PRI_MIN; i < PRI_MAX; i += BSD_PRIORITIES_PER_QUEUE)
     {
@@ -71,7 +78,7 @@ initalise_mlfqs_queues (struct list *bsdqs)
       /* Must push front so highest priority queue is first */
       list_push_front (bsdqs, &bsdq->bsdelem);
     }
-  printf ("after initialise bsdqs size %d\n", list_size(bsdqs));
+  printf ("after initialise bsdqs size %d\n", list_size(&bsd_queues));
 }
 
 void
@@ -201,7 +208,7 @@ thread_init (void)
 
   if (thread_mlfqs)
     {
-      initalise_mlfqs_queues (&bsd_queues);
+      initialise_mlfqs_queues ();
     }
   else
     {
