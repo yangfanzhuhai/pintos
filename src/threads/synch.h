@@ -29,19 +29,9 @@ struct donor_elem
     struct lock *lock;              /* Lock that donor tries
                                         to acquire. */
   };
-
-/* One donee in a list. */
-struct donee_elem 
-  {
-    struct list_elem elem;          /* List element. */
-    struct thread *donee;           /* This donee thread. */
-    struct lock *lock;              /* Lock held by donee. */
-  };
   
 void donor_init(struct donor_elem *,
            struct thread *, struct lock *);          
-void donee_init(struct donee_elem *,
-           struct thread *, struct lock *);
 void lock_holder_delete_donors(struct thread *, 
                         struct lock *);    
 void thread_delete_donee(struct thread *, struct thread *,

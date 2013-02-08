@@ -185,17 +185,6 @@ donor_init (struct donor_elem *donor_e,
   donor_e->lock  = l;
 }
 
-/* Initialises the donee_elem. */
-void
-donee_init (struct donee_elem *donee_e,
-           struct thread *d, struct lock *l)
-{
-  ASSERT (!thread_mlfqs);
-  
-  donee_e->donee = d;
-  donee_e->lock  = l;
-}
-
 /* Initializes LOCK.  A lock can be held by at most a single
    thread at any given time.  Our locks are not "recursive", that
    is, it is an error for the thread currently holding a lock to
@@ -220,7 +209,7 @@ lock_init (struct lock *lock)
   sema_init (&lock->semaphore, 1);
 }
 
-/* Deletes all holder's donors waiting for lock. */
+/* Deletes the holder's existing donor waiting for lock. */
 void
 lock_holder_delete_donors (struct thread *holder, 
                         struct lock *lock)
@@ -238,35 +227,10 @@ lock_holder_delete_donors (struct thread *holder,
 		  if (donor_e->lock == lock) 
 		    {
 		      list_remove (&donor_e->elem);
-		      /* Deletes the holder from the donor's donee list. */
-		      thread_delete_donee (donor_e->donor, holder, lock);
+		      /* Set the donor's donee to NULL. */
+		      donor_e->donor->donee = NULL;
 		    }
 		}
-}
-
-/* Deletes the donee_thread from the donor_thread's donee list. */
-void
-thread_delete_donee (struct thread *donor_thread, 
-          struct thread *donee_thread,
-          struct lock *lock)
-{
-  ASSERT (!thread_mlfqs);
-  
-  struct list_elem *e;
-  struct donee_elem *donee_e = NULL;
-  
-	for (e = list_begin (&donor_thread->donees); 
-	      e != list_end (&donor_thread->donees);
-	    	e = list_next (e)) 
-		{
-		  donee_e = list_entry (e, struct donee_elem, elem);
-				  
-		  if (donee_e->lock == lock && 
-		      donee_e->donee == donee_thread) 	      
-		      break;
-		}
-	if (donee_e != NULL) 
-	  list_remove (&donee_e->elem);
 }
 
 /* Deletes the donor_thread from the donee_thread's donor list. 
@@ -297,28 +261,24 @@ thread_delete_donor (struct thread *donor_thread,
   return donor_e != NULL;
 }
 
-/* Recursively updates a thread's donees on its priority. */
+/* Recursively updates a thread's donee on its priority. */
 void
 update_priority_donation (struct thread *t)
 {
   ASSERT (!thread_mlfqs);
   
-  struct list_elem *e;
+  struct thread *donee;
+  donee = t->donee;
   
-	for (e = list_begin (&t->donees); 
-	      e != list_end (&t->donees);
-	    	e = list_next (e)) 
-		{
-		  struct donee_elem *donee_e;
-		  donee_e = list_entry (e, struct donee_elem, elem);
-				  
-      if (donee_e->donee->priority < t->priority) 
+  if (donee != NULL) 
+    {
+      if (donee->priority < t->priority) 
         {
-          donee_e->donee->priority = t->priority;
-          if (!list_empty (&donee_e->donee->donees))
-            update_priority_donation (donee_e->donee);
+          donee->priority = t->priority;
+          if (donee->donee != NULL)
+            update_priority_donation (donee);
         }
-		}
+    }
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -348,21 +308,19 @@ lock_acquire (struct lock *lock)
 	    		holder->priority = thread_get_apparent_priority ();   
 	    		
 	    		struct donor_elem donor;
-	    		struct donee_elem donee;
           
           donor_init (&donor, thread_current (), lock);
-          donee_init (&donee, holder, lock);
       
 		    	/* Deletes the existing donor that is waiting for the same lock*/
 		    	lock_holder_delete_donors (holder, lock);
 			
-		    	/* Insert the current thread to the holder's donor list. */
+		    	/* Inserts the current thread to the holder's donor list. */
 		    	list_push_front (&holder->donors, & (&donor)->elem);
 			
-		    	/* Insert the holder to the current thread's donee list. */
-		    	list_push_front (&thread_current()->donees, & (&donee)->elem);
+			    /* Records holder as the current thread's donee. */
+		    	thread_current ()->donee = holder;
 			
-		    	/* Recursively updates the holder's donees of the new priority. */
+		    	/* Recursively updates the holder's donee of the new priority. */
 		    	update_priority_donation (holder);
         }
     }
@@ -419,9 +377,8 @@ lock_release (struct lock *lock)
 			
 			if (woke_donor)
         {
-          /* Deletes the current thread from the woke up donor's 
-             donee list. */
-          thread_delete_donee (woke, thread_current (), lock);
+          /* Set the woke up donor's donee to NULL. */
+          woke->donee = NULL;
           
 					if (!list_empty (donor_list))
 					  {

@@ -97,7 +97,7 @@ struct thread
     /* Priority Scheduling */
     int base_priority;
     struct list donors;                 /* Donor list. */
-    struct list donees;                 /* Donee list. */   
+    struct thread *donee;                 /* Donee. */   
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */

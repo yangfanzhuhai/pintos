@@ -1,3 +1,5 @@
+*.c~
+*.h~
 build
 bochsrc.txt
 bochsout.txt

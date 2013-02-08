@@ -563,7 +563,6 @@ init_thread (struct thread *t, const char *name, int priority)
       t->priority = priority;
       t->base_priority = priority;
       list_init (&t->donors);
-      list_init (&t->donees);
     }
 
   old_level = intr_disable ();
