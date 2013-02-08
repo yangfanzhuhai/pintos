@@ -205,14 +205,13 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
 
-  /* BSD operations */
+  /* Multilevel feedback queue operations */
   if (thread_mlfqs)
     {
-
       /* Every 4th tick */
       if (timer_ticks () % 4 == 0)
         {
-          threads_update_bsd_priority ();
+          threads_update_mlfqs_priority ();
         }
 
       /* Every second */

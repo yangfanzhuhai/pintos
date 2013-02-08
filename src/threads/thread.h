@@ -152,30 +152,30 @@ void thread_yield (void);
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
 
-int thread_get_priority (void);
+int  thread_get_priority (void);
 void thread_set_priority (int);
 
-int thread_get_nice (void);
+int  thread_get_nice (void);
 void thread_set_nice (int);
-int thread_get_recent_cpu (void);
-int thread_get_load_avg (void);
+int  thread_get_recent_cpu (void);
+int  thread_get_load_avg (void);
 
-int threads_ready_or_running (void);
+int  threads_ready_or_running (void);
 void threads_update_recent_cpu (void);
 void threads_update_bsd_priority (void);
 void update_load_avg (void);
-int thread_calculate_recent_cpu (struct thread *t);
+
+int  thread_calculate_recent_cpu (struct thread *t);
 void thread_update_recent_cpu (struct thread *t, void *aux UNUSED);
-int thread_calculate_bsd_priority (struct thread *t);
-void thread_update_bsd_priority (struct thread *t, void *aux UNUSED);
 
+int  thread_calculate_mlfqs_priority (struct thread *t);
+void thread_update_mlfqs_priority (struct thread *t, void *aux UNUSED);
+void threads_update_mlfqs_priority (void);
 
-void initalise_bsd_queue (struct bsd_queue *bsdq);
-void initalise_bsd_queues (struct list *bsdqs);
+void initalise_mlfqs_queue (struct bsd_queue *bsdq);
+void initalise_mlfqs_queues (struct list *bsdqs);
 
-/*
-bool list_less_bsd_queue (const struct list_elem *elem1,
-                        const struct list_elem *elem2,
-                        void *aux UNUSED);
-*/
+void thread_insert_mlfqs (struct thread *t);
+void thread_remove_mlfqs (struct thread *t);
+
 #endif /* threads/thread.h */
