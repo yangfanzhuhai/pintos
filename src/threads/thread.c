@@ -54,18 +54,20 @@ initalise_mlfqs_queues (struct list *bsdqs)
   ASSERT((((PRI_MAX - PRI_MIN) + 1) % BSD_PRIORITIES_PER_QUEUE) == 0);
 
   list_init(bsdqs);
-
+  printf ("initialise bsdqs size %d\n", list_size(bsdqs));
   int i;
   for (i = PRI_MIN; i < PRI_MAX; i += BSD_PRIORITIES_PER_QUEUE)
     {
+      printf ("i %d\n", i);
       struct bsd_queue bsdq;
       initalise_mlfqs_queue (&bsdq);
       bsdq.priority_min = i;
       bsdq.priority_max = i + BSD_PRIORITIES_PER_QUEUE - 1;
       
       /* Must push front so highest priority queue is first */
-      list_push_front (bsdqs, &bsdq.bsdelem);
+      list_push_back (bsdqs, & (&bsdq)->bsdelem);
     }
+  printf ("after initialise bsdqs size %d\n", list_size(bsdqs));
 }
 
 void
@@ -91,6 +93,7 @@ thread_insert_mlfqs (struct thread *t)
              existing thread - ensuring round robin access. */
           list_insert_ordered (&bsdq->threads, &t->bsdelem, higher_priority,
               NULL);
+          return;
         }
     }
 }
@@ -101,11 +104,14 @@ thread_remove_mlfqs (struct thread *t)
   struct list_elem *e;
   struct list_elem *e2;
 
+  printf ("in remove bsdqs size %d\n", list_size(&bsd_queues));
   /* For each bsd queue */
   for (e = list_begin (&bsd_queues); e != list_end (&bsd_queues);
        e = list_next (e))
     {
       struct bsd_queue *bsdq = list_entry (e, struct bsd_queue, bsdelem);
+
+      printf ("%d\n", list_size (&bsdq->threads));
 
       /* For each thread in the current bsd queue */
       for (e2 = list_begin (&bsdq->threads); e2 != list_end (&bsdq->threads);
@@ -201,6 +207,15 @@ thread_init (void)
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
+
+  /* Sets initial thread to have a niceness of 0 */
+  if (thread_mlfqs)
+    {
+      initial_thread->niceness = 0;
+      initial_thread->priority 
+          = thread_calculate_mlfqs_priority (initial_thread);
+    }
+
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
 }
@@ -285,16 +300,17 @@ thread_create (const char *name, int priority,
   if (t == NULL)
     return TID_ERROR;
 
-  /* Multilevel feedback queue setup */
-  if (thread_mlfqs)
-    {
-      thread_update_recent_cpu (t,NULL);
-      priority = thread_calculate_mlfqs_priority (t);
-    }
-
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+
+  /* Multilevel feedback queue setup */
+  if (thread_mlfqs)
+    {
+      t->niceness = thread_current ()->niceness;
+      thread_update_recent_cpu (t,NULL);
+      t->priority = thread_calculate_mlfqs_priority (t);
+    }
 
   /* Prepare thread for first run by initializing its stack.
      Do this atomically so intermediate values for the 'stack' 
@@ -639,21 +655,25 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
-  t->priority = priority;
   t->magic = THREAD_MAGIC;
 
   if (thread_mlfqs)
     {
       t->recent_cpu = 0;
-      t->niceness = 0;
       thread_update_mlfqs_priority (t,NULL);
     }
+  else
+    {
+      t->priority = priority;
 
-  /* Luke's Implementation */
-  t->base_priority = priority;
-  /* Luke's implementation */
-  list_init (&t->donors);
-  /* End */
+      /* Luke's Implementation */
+      t->base_priority = priority;
+      /* Luke's implementation */
+      list_init (&t->donors);
+      /* End */
+    }
+
+
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
