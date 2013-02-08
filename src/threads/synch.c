@@ -121,6 +121,7 @@ sema_up (struct semaphore *sema)
     {
       //struct list_elem *e;
       //e = list_min (&sema->waiters, thread_higher_priority, NULL);
+      //next = list_entry (e, struct thread, elem);
       list_sort (&sema->waiters, thread_higher_priority, NULL);
       next = list_entry (list_pop_front(&sema->waiters), struct thread, elem);
       thread_unblock (next);

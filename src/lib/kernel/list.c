@@ -523,20 +523,3 @@ list_min (struct list *list, list_less_func *less, void *aux)
   return min;
 }
 
-/* checks whether a list_elem is inside list*/
-bool
-list_contains(const struct list *list, const struct list_elem *elem)
-{
-	bool result = false;
-	struct list_elem *e;
-      
-  for (e = list_begin (list); e != list_end (list); e = list_next (e))
-		{
-			if (e == elem) 
-				{
-					result = true;
-					break;
-				}
-		}
-	return result;
-}
