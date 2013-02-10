@@ -14,44 +14,30 @@ struct semaphore
 void sema_init (struct semaphore *, unsigned value);
 void sema_down (struct semaphore *);
 bool sema_try_down (struct semaphore *);
-struct thread * sema_up (struct semaphore *);
+void sema_up (struct semaphore *);
 void sema_self_test (void);
-
-
-
-/* Priority donation. */
-
-/* One donor in a list. */
-struct donor_elem 
-  {
-    struct list_elem elem;          /* List element. */
-    struct thread *donor;           /* This donor thread. */
-    struct lock *lock;              /* Lock that donor tries
-                                        to acquire. */
-  };
-  
-void donor_init(struct donor_elem *,
-           struct thread *, struct lock *);          
-void lock_holder_delete_donors(struct thread *, 
-                        struct lock *);    
-void thread_delete_donee(struct thread *, struct thread *,
-          struct lock *);  
-bool thread_delete_donor(struct thread *, struct thread *,
-          struct lock *);
-void update_priority_donation(struct thread *);
 
 /* Lock. */
 struct lock 
   {
     struct thread *holder;      /* Thread holding lock (for debugging). */
     struct semaphore semaphore; /* Binary semaphore controlling access. */
+		struct list_elem elem;			/* List element for holder's acquired 
+																	lock list. */
   };
   
 void lock_init (struct lock *);
+
+/* Priority donation. */
+void update_priority_donation (struct thread *);
+int get_highest_possible_priority (struct thread *);
+
 void lock_acquire (struct lock *);
 bool lock_try_acquire (struct lock *);
 void lock_release (struct lock *);
 bool lock_held_by_current_thread (const struct lock *);
+
+
 
 /* Condition variable. */
 struct condition 

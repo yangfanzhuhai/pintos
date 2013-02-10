@@ -209,7 +209,8 @@ thread_create (const char *name, int priority,
   
   /* Add to run queue. */
   thread_unblock (t);
-
+	
+	printf("created thread %s\n", t->name);
   /* If thread t has higher priority, the running thread 
      yields to it. */
   thread_try_yield (t);
@@ -269,22 +270,6 @@ thread_higher_priority(const struct list_elem *elem1,
 	struct thread *thread2 
 		= list_entry (elem2, struct thread, elem);
 	return thread1->priority > thread2->priority;
-}
-
-/* list_less_func() for list_max() 
-   threads with lower priority comes first */
-bool 
-list_lower_priority(const struct list_elem *elem1, 
-	const struct list_elem *elem2,
-	void *aux UNUSED)
-{
-	ASSERT(elem1 != NULL);
-	ASSERT(elem2 != NULL);
-	struct thread *thread1 
-		= list_entry (elem1, struct thread, elem);
-	struct thread *thread2 
-		= list_entry (elem2, struct thread, elem);
-	return thread1->priority < thread2->priority;
 }
 
 /* Returns the name of the running thread. */
@@ -387,31 +372,27 @@ thread_foreach (thread_action_func *func, void *aux)
 }
 
 /* Sets the current thread's base_priority to NEW_PRIORITY. 
-	 If the current thread is not holding any locks, or if 
-	 NEW_PRIORITY is higher than the current thread's donated
-	 apparent priority, thread_set_apparent_priority is called. */
+	 If the current thread's priority is the same as its base 
+	 priority, or if NEW_PRIORITY is higher than the current 
+	 thread's donated apparent priority, thread_set_apparent_priority () 
+	 is called. */
 void
 thread_set_priority (int new_priority) 
 { 
-	if (thread_mlfqs)
-		{
-			thread_current ()->priority = new_priority;
-		}
-	else
-		{
-			struct thread *curr;
-  		curr = thread_current();
-			
-  		curr->base_priority = new_priority;
-  		
-			if (list_empty (&curr->donors) || (!list_empty (&curr->donors) && 
-															curr->base_priority > curr->priority))
-					thread_set_apparent_priority(curr->base_priority);
-
-/*  		if ((list_empty(&curr->donors) || 
-      		curr->base_priority > curr->priority))
-    		thread_set_apparent_priority(curr->base_priority);*/
-		}
+  /* If advanced scheduler is in use ignore set priority as priority
+will be dynamically determined. */
+	ASSERT (!thread_mlfqs);
+	struct thread *curr;
+	curr = thread_current();
+	
+	int original_priority = curr->base_priority;
+	curr->base_priority = new_priority;
+	
+	if (original_priority == curr->priority || 
+			(original_priority < curr->priority	&& 	
+			new_priority > curr->priority))
+		thread_set_apparent_priority(new_priority);
+		
 }
 
 /* Sets the current thread's apparent priority to NEW_PRIORITY. */
@@ -433,9 +414,7 @@ thread_set_apparent_priority (int new_priority)
 	next = list_entry (list_begin(&ready_list), 
                   struct thread, elem);
 
-  /* If the running thread no longer has the highest priority, 
-     it yields. */
-  thread_try_yield (next);
+	thread_try_yield (next);
 }
 
 /* Returns the current thread's priority. */
@@ -567,7 +546,6 @@ init_thread (struct thread *t, const char *name, int priority)
     {
       t->priority = priority;
       t->base_priority = priority;
-      list_init (&t->donors);
 			list_init (&t->locks);
     }
 

@@ -96,7 +96,6 @@ struct thread
 
     /* Priority Scheduling */
     int base_priority;
-    struct list donors;                 /* Donor list. */
 		struct list locks;									/* Acquired lock List. */
     struct thread *donee;               /* Donee. */   
 
