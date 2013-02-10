@@ -161,6 +161,9 @@ int  thread_get_recent_cpu (void);
 int  thread_get_load_avg (void);
 
 int  threads_ready_or_running (void);
+
+void thread_increment_recent_cpu (void);
+
 void threads_update_recent_cpu (void);
 void threads_update_bsd_priority (void);
 void update_load_avg (void);

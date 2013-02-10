@@ -205,9 +205,12 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
 
-  /* Multilevel feedback queue operations */
+ /* Multilevel feedback queue operations */
   if (thread_mlfqs)
     {
+      /* Increment recent_cpu of current thread if not the idle thread */
+      thread_increment_recent_cpu ();
+
       /* Every 4th tick */
       if (timer_ticks () % 4 == 0)
         {

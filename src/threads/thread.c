@@ -25,12 +25,16 @@
 #define NICE_MIN (-20)
 #define NICE_MAX (20)
 #define LOAD_AVG_REFRESH_RATE (60)
-#define BSD_PRIORITIES_PER_QUEUE (4)
+#define MLFQS_PRIORITIES_PER_QUEUE (4)
+#define MLFQS_USE_MULTILEVEL (false)
 
+/* The system wide load average is 0 at program start */
 int32_t load_avg = 0;
 
+/* Multilevel feedback queues list and queue memory */
+static struct list mlfqs_queues;
 static struct bsd_queue
-    queue_arr[(PRI_MAX - PRI_MIN + 1) / BSD_PRIORITIES_PER_QUEUE];
+    queue_arr[(PRI_MAX - PRI_MIN + 1) / MLFQS_PRIORITIES_PER_QUEUE];
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
@@ -42,7 +46,7 @@ static struct list all_list;
 
 
 
-static struct list bsd_queues;
+
 
 
 void
@@ -55,30 +59,25 @@ initialise_mlfqs_queue (struct bsd_queue *bsdq)
 void
 initialise_mlfqs_queues (void)
 {
-
   ASSERT (intr_get_level () == INTR_OFF);
-  /* Assert priority range is divisible by priorities per queue */
-  ASSERT((((PRI_MAX - PRI_MIN) + 1) % BSD_PRIORITIES_PER_QUEUE) == 0);
 
-  list_init(&bsd_queues);
-  
-  printf("PRI_MIN %d\n", PRI_MIN);
-  printf("PRI_MAX %d\n", PRI_MAX);
-  
-  printf ("initialise bsdqs size %d\n", list_size(&bsd_queues));
+  /* Assert priority range is divisible by priorities per queue */
+  ASSERT((((PRI_MAX - PRI_MIN) + 1) % MLFQS_PRIORITIES_PER_QUEUE) == 0);
+
+  list_init(&mlfqs_queues);
+
   int i;
-  for (i = PRI_MIN; i < PRI_MAX; i += BSD_PRIORITIES_PER_QUEUE)
+  for (i = PRI_MIN; i < PRI_MAX; i += MLFQS_PRIORITIES_PER_QUEUE)
     {
       printf ("i %d\n", i);
-      struct bsd_queue *bsdq = &queue_arr[i / BSD_PRIORITIES_PER_QUEUE];
-      initalise_mlfqs_queue (bsdq);
+      struct bsd_queue *bsdq = &queue_arr[i / MLFQS_PRIORITIES_PER_QUEUE];
+      initialise_mlfqs_queue (bsdq);
       bsdq->priority_min = i;
-      bsdq->priority_max = i + BSD_PRIORITIES_PER_QUEUE - 1;
+      bsdq->priority_max = i + MLFQS_PRIORITIES_PER_QUEUE - 1;
       
       /* Must push front so highest priority queue is first */
-      list_push_front (bsdqs, &bsdq->bsdelem);
+      list_push_front (&mlfqs_queues, &bsdq->bsdelem);
     }
-  printf ("after initialise bsdqs size %d\n", list_size(&bsd_queues));
 }
 
 void
@@ -86,7 +85,7 @@ thread_insert_mlfqs (struct thread *t)
 {
   struct list_elem *e;
 
-  for (e = list_begin (&bsd_queues); e != list_end (&bsd_queues);
+  for (e = list_begin (&mlfqs_queues); e != list_end (&mlfqs_queues);
        e = list_next (e))
     {
       struct bsd_queue *bsdq = list_entry (e, struct bsd_queue, bsdelem);
@@ -115,9 +114,9 @@ thread_remove_mlfqs (struct thread *t)
   struct list_elem *e;
   struct list_elem *e2;
 
-  printf ("in remove bsdqs size %d\n", list_size(&bsd_queues));
+  printf ("in remove bsdqs size %d\n", list_size(&mlfqs_queues));
   /* For each bsd queue */
-  for (e = list_begin (&bsd_queues); e != list_end (&bsd_queues);
+  for (e = list_begin (&mlfqs_queues); e != list_end (&mlfqs_queues);
        e = list_next (e))
     {
       struct bsd_queue *bsdq = list_entry (e, struct bsd_queue, bsdelem);
@@ -206,7 +205,8 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&all_list);
 
-  if (thread_mlfqs)
+  /* Initialise relevant queuing system */
+  if (thread_mlfqs && MLFQS_USE_MULTILEVEL)
     {
       initialise_mlfqs_queues ();
     }
@@ -222,7 +222,12 @@ thread_init (void)
   /* Sets initial thread to have a niceness of 0 */
   if (thread_mlfqs)
     {
+      /* Initial thread has a niceness of 0 and a recent_cpu of 0 */
       initial_thread->niceness = 0;
+      initial_thread->recent_cpu = 0;
+
+      /* Dynamically calculate priority 
+         Note: This overwrites the value set using init_thread */
       initial_thread->priority 
           = thread_calculate_mlfqs_priority (initial_thread);
     }
@@ -318,8 +323,13 @@ thread_create (const char *name, int priority,
   /* Multilevel feedback queue setup */
   if (thread_mlfqs)
     {
+      /* A created thread inherits its parent's niceness and recent_cpu */
       t->niceness = thread_current ()->niceness;
-      thread_update_recent_cpu (t,NULL);
+      t->recent_cpu = thread_current ()->recent_cpu;
+      //thread_update_recent_cpu (t,NULL);
+
+      /* Dynamically calculate priority 
+         Note: This overwrites the value set using init_thread */
       t->priority = thread_calculate_mlfqs_priority (t);
     }
 
@@ -390,7 +400,7 @@ thread_unblock (struct thread *t)
   ASSERT (t->status == THREAD_BLOCKED);
 
   /* Thread is now runnable restore in the relevant run queue */
-  if (thread_mlfqs)
+  if (thread_mlfqs && MLFQS_USE_MULTILEVEL)
     {
       thread_insert_mlfqs (t);
     }
@@ -488,7 +498,7 @@ thread_yield (void)
   if (cur != idle_thread)
     {
       /* Using multi level feedback queue */
-      if (thread_mlfqs)
+      if (thread_mlfqs && MLFQS_USE_MULTILEVEL)
         {
           thread_insert_mlfqs (cur);
         }
@@ -668,7 +678,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->magic = THREAD_MAGIC;
 
-  if (thread_mlfqs)
+  if (thread_mlfqs && MLFQS_USE_MULTILEVEL)
     {
       t->recent_cpu = 0;
       if (!idle_thread)
@@ -715,13 +725,13 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-  /* Multilevel feedback queue is enabled (BSD scheduler) */
-  if (thread_mlfqs)
+  /* Multilevel feedback queue is enabled */
+  if (thread_mlfqs && MLFQS_USE_MULTILEVEL)
     {  
       struct list_elem *e;
 
       /* Return the thread with the highest priority */
-      for (e = list_begin (&bsd_queues); e != list_end (&bsd_queues);
+      for (e = list_begin (&mlfqs_queues); e != list_end (&mlfqs_queues);
            e = list_next (e))
         {
           struct bsd_queue *bsdq = list_entry (e, struct bsd_queue, bsdelem);
@@ -844,12 +854,12 @@ threads_ready_or_running (void)
 
   int ready_threads = 0;
 
-  if (thread_mlfqs)
+  if (thread_mlfqs && MLFQS_USE_MULTILEVEL)
     {
       struct list_elem *e;
 
       /* For each queue in the mlfqs */
-      for (e = list_begin (&bsd_queues); e != list_end (&bsd_queues);
+      for (e = list_begin (&mlfqs_queues); e != list_end (&mlfqs_queues);
            e = list_next (e))
         {
           struct bsd_queue *bsdq = list_entry (e, struct bsd_queue, bsdelem);
@@ -873,8 +883,16 @@ threads_ready_or_running (void)
 
 
 
-
-
+/* Increment recent_cpu of current thread if not the idle thread */
+void
+thread_increment_recent_cpu (void)
+{
+  if (thread_current () != idle_thread)
+    {
+      thread_current ()->recent_cpu
+          = fp_int_addition (thread_current ()->recent_cpu, 1);
+    }
+}
 
 
 /* Update the load_avg value.
@@ -915,7 +933,8 @@ thread_calculate_recent_cpu (struct thread *t)
   int32_t fp_dbl_load_avg_plus_1 = fp_int_addition (fp_dbl_load_avg,1);
   int32_t fp_decay = fp_division (fp_dbl_load_avg,fp_dbl_load_avg_plus_1);
   int32_t fp_decay_component = fp_multiplication (fp_decay,t->recent_cpu);
-  return fp_int_addition (fp_decay_component,(int32_t)t->niceness);
+  int32_t rcpu = fp_int_addition (fp_decay_component,(int32_t)t->niceness);
+  return (int)rcpu;
 }
 
 /* Update the recent_cpu value of the given thread to be the dynamically
@@ -958,15 +977,40 @@ thread_update_mlfqs_priority (struct thread *t, void *aux UNUSED)
 {
   ASSERT (thread_mlfqs);
 
+  /* Don't adjust the priority of the idle thread */
+  //if (t == idle_thread)
+  //  {
+  //    return;
+  //  }
+
   int old_priority = t->priority;
   t->priority = thread_calculate_mlfqs_priority (t);
+
+
+  /* The current thread is not in the queue so no need to reposition */
+  //if (t == thread_current ())
+  //  {
+  //    return;
+  //  }
+
 
   /* If the multilevel feed back queue priority has changed, remove the thread
      from the mlfqs and re insert in the new correct position */
   if (t->priority != old_priority)
     {
-      thread_remove_mlfqs (t);
-      thread_insert_mlfqs (t);
+      /* Reinsert in the correct queue */
+      if (MLFQS_USE_MULTILEVEL)
+        {
+          //thread_remove_mlfqs (t);
+          //thread_insert_mlfqs (t);
+          
+        }
+      else
+        {
+          //list_remove (&t->elem);
+          //list_insert_ordered (&ready_list, &t->elem, higher_priority, NULL);
+          list_sort (&ready_list, higher_priority, NULL);
+        }
     }
 }
 
