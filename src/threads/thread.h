@@ -97,7 +97,8 @@ struct thread
     /* Priority Scheduling */
     int base_priority;
     struct list donors;                 /* Donor list. */
-    struct thread *donee;                 /* Donee. */   
+		struct list locks;									/* Acquired lock List. */
+    struct thread *donee;               /* Donee. */   
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -146,7 +147,6 @@ typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
-int thread_get_apparent_priority (void);
 void thread_set_priority (int);
 void thread_set_apparent_priority (int);
 

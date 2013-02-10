@@ -386,17 +386,32 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
-/* Sets the current thread's base_priority to NEW_PRIORITY. */
+/* Sets the current thread's base_priority to NEW_PRIORITY. 
+	 If the current thread is not holding any locks, or if 
+	 NEW_PRIORITY is higher than the current thread's donated
+	 apparent priority, thread_set_apparent_priority is called. */
 void
 thread_set_priority (int new_priority) 
 { 
-  struct thread *curr;
-  curr = thread_current();
-  curr->base_priority = new_priority;
-  
-  if ((list_empty(&curr->donors) || 
-      curr->base_priority > curr->priority))
-    thread_set_apparent_priority(curr->base_priority);
+	if (thread_mlfqs)
+		{
+			thread_current ()->priority = new_priority;
+		}
+	else
+		{
+			struct thread *curr;
+  		curr = thread_current();
+			
+  		curr->base_priority = new_priority;
+  		
+			if (list_empty (&curr->donors) || (!list_empty (&curr->donors) && 
+															curr->base_priority > curr->priority))
+					thread_set_apparent_priority(curr->base_priority);
+
+/*  		if ((list_empty(&curr->donors) || 
+      		curr->base_priority > curr->priority))
+    		thread_set_apparent_priority(curr->base_priority);*/
+		}
 }
 
 /* Sets the current thread's apparent priority to NEW_PRIORITY. */
@@ -427,16 +442,6 @@ thread_set_apparent_priority (int new_priority)
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->priority;
-}
-
-/* Yangfan: Is this required? */
-/* Returns the current thread's apparent priority. */
-int
-thread_get_apparent_priority (void) 
-{
-  ASSERT (!thread_mlfqs);
-  
   return thread_current ()->priority;
 }
 
@@ -563,6 +568,7 @@ init_thread (struct thread *t, const char *name, int priority)
       t->priority = priority;
       t->base_priority = priority;
       list_init (&t->donors);
+			list_init (&t->locks);
     }
 
   old_level = intr_disable ();
