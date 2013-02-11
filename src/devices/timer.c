@@ -96,7 +96,7 @@ timer_elapsed (int64_t then)
 }
 
 
-bool 
+static bool 
 lower_wake_up_tick (const struct list_elem *elem1, 
   const struct list_elem *elem2,	void *aux UNUSED)
 {

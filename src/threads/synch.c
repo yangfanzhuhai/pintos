@@ -427,7 +427,7 @@ cond_wait (struct condition *cond, struct lock *lock)
 
 /* list_less_func() for list_insert_ordered() in cond_signal().
    A semaphore with a higher prority thread comes first. */
-bool 
+static bool 
 cond_higher_priority (const struct list_elem *elem1, 
 	const struct list_elem *elem2,
 	void *aux UNUSED)

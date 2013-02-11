@@ -142,9 +142,7 @@ void thread_unblock (struct thread *);
 bool thread_higher_priority(const struct list_elem *, 
                       const struct list_elem *, 
                        void *);
-bool list_lower_priority(const struct list_elem *, 
-                      const struct list_elem *, 
-                       void *);
+
 struct thread *thread_current (void);
 tid_t thread_tid (void);
 const char *thread_name (void);
