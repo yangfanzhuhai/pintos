@@ -31,6 +31,7 @@ void lock_init (struct lock *);
 /* Priority donation. */
 void update_priority_donation (struct thread *);
 int get_highest_possible_priority (struct thread *);
+void  lock_set_waiters_donee (struct lock *lock);
 
 void lock_acquire (struct lock *);
 bool lock_try_acquire (struct lock *);
