@@ -220,6 +220,8 @@ update_priority_donation (struct thread *t)
 int
 get_highest_possible_priority (struct thread *t)
 {
+  ASSERT (!thread_mlfqs);
+  
 	int result = t->base_priority;
 	if (!list_empty (&t->locks))
 		{	
@@ -249,6 +251,8 @@ get_highest_possible_priority (struct thread *t)
 void 
 lock_set_waiters_donee (struct lock *lock)
 {
+  ASSERT (!thread_mlfqs);
+  
 	struct list *waiters = & (&lock->semaphore)->waiters;
 	if (!list_empty(waiters))
 		{

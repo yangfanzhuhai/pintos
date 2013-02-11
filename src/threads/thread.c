@@ -330,7 +330,10 @@ void
 thread_try_yield(struct thread *t)
 {
   if (t != NULL && t->priority > thread_get_priority ())
-    thread_yield ();
+    if (intr_context ())
+      intr_yield_on_return ();
+    else 
+      thread_yield ();
 }
 
 /* Yields the CPU.  The current thread is not put to sleep and
