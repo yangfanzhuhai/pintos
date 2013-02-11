@@ -141,14 +141,11 @@ test_mlfqs_load_avg (void)
        timer_elapsed (start_time) / TIMER_FREQ);
   thread_set_nice (-20);
 
-  printf ("WE GOT HERE\n");
-
   for (i = 0; i < 90; i++) 
     {
       int64_t sleep_until = start_time + TIMER_FREQ * (2 * i + 10);
       int load_avg;
       timer_sleep (sleep_until - timer_ticks ());
-      printf ("Event the test says its done\n");
       load_avg = thread_get_load_avg ();
       msg ("After %d seconds, load average=%d.%02d.",
            i * 2, load_avg / 100, load_avg % 100);
@@ -164,7 +161,6 @@ load_thread (void *seq_no_)
   int exit_time = TIMER_FREQ * (THREAD_CNT * 2);
 
   timer_sleep (sleep_time - timer_elapsed (start_time));
-  printf ("Load_thread says its done\n");
   while (timer_elapsed (start_time) < spin_time)
     continue;
   timer_sleep (exit_time - timer_elapsed (start_time));

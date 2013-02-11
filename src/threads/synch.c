@@ -127,7 +127,15 @@ sema_up (struct semaphore *sema)
   
   if (next != NULL && next-> priority > thread_current()->priority)
     {
-      thread_yield();
+      /* Yield (supports both internal and external interrupts) */
+      if (intr_context ())
+        {
+          intr_yield_on_return ();
+        }
+      else
+        {
+          thread_yield();
+        }
     }
   
   intr_set_level (old_level);

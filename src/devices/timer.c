@@ -111,8 +111,6 @@ timer_wake (void)
 
   ASSERT (intr_get_level () == INTR_OFF);
 
-  //printf ("List of sleeping threads with length : %d\n\n", list_size(&sleeping_threads));
-
   for (e = list_begin (&sleeping_threads); e != list_end (&sleeping_threads);
        e = list_next (e))
     {

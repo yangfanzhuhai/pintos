@@ -26,7 +26,7 @@
 #define NICE_MAX (20)
 #define LOAD_AVG_REFRESH_RATE (60)
 #define MLFQS_PRIORITIES_PER_QUEUE (4)
-#define MLFQS_USE_MULTILEVEL (false)
+#define MLFQS_USE_MULTILEVEL (true)
 
 /* The system wide load average is 0 at program start */
 int32_t load_avg = 0;
