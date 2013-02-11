@@ -145,9 +145,6 @@ static struct thread *initial_thread;
 static struct lock tid_lock;
 
 /* Lock used by thread_set_priority() */
-static struct lock set_base_priority_lock;
-
-/* Lock used by thread_set_priority() */
 static struct lock set_priority_lock;
 
 /* Stack frame for kernel_thread(). */
@@ -203,7 +200,6 @@ thread_init (void)
   ASSERT (intr_get_level () == INTR_OFF);
 
   lock_init (&tid_lock);
-  lock_init (&set_base_priority_lock);
   lock_init (&set_priority_lock);
   list_init (&all_list);
 
@@ -552,14 +548,16 @@ thread_set_priority (int new_priority)
 will be dynamically determined. */
 	if (!thread_mlfqs)
 	  {
-      lock_acquire(&set_base_priority_lock);
+      enum intr_level old_level;
+
 	    struct thread *curr;    
 	    curr = thread_current();
 	    int original_priority = curr->base_priority;
 	    curr->base_priority = new_priority;
+      old_level = intr_disable ();
 	    if (original_priority == curr->priority)
          thread_set_apparent_priority (get_highest_possible_priority (curr));
-      lock_release(&set_priority_lock);
+      intr_set_level (old_level);
       /* If the current thread does not have the highest priority, it yields.  */
 	    thread_try_yield (list_entry (list_min (&ready_list, 
 	                                            thread_higher_priority, NULL), 
@@ -572,7 +570,7 @@ void
 thread_set_apparent_priority (int new_priority) 
 { 
   ASSERT (!thread_mlfqs);
-  lock_acquire(&set_priority_lock);
+
   struct thread *curr;
   
   curr = thread_current();
@@ -581,7 +579,7 @@ thread_set_apparent_priority (int new_priority)
   /* Recursively updates the current thread's donees 
      of the new priority. */
 	update_priority_donation(curr);
-  lock_release(&set_priority_lock);
+
 }
 
 /* Returns the current thread's priority. */
