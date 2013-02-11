@@ -96,15 +96,11 @@ void
 timer_sleep (int64_t ticks) 
 {
   ASSERT (intr_get_level () == INTR_ON);
-  enum intr_level old_level;
-  old_level = intr_disable ();
   
   struct thread *t = thread_current ();
   t->wake_up_tick = timer_ticks () + ticks;
   list_push_back (&sleeping_threads, &t->sleepelem);
-  thread_block ();
-  
-  intr_set_level (old_level);
+  sema_down (&t->wake_up_sema);
 }
 
 /* Check all sleeping threads to see if its time for the thread to wake up */
@@ -115,6 +111,8 @@ timer_wake (void)
 
   ASSERT (intr_get_level () == INTR_OFF);
 
+  //printf ("List of sleeping threads with length : %d\n\n", list_size(&sleeping_threads));
+
   for (e = list_begin (&sleeping_threads); e != list_end (&sleeping_threads);
        e = list_next (e))
     {
@@ -123,7 +121,7 @@ timer_wake (void)
       if (t->wake_up_tick <= ticks)
         {
           list_remove (e);
-          thread_unblock (t);
+          sema_up (&t->wake_up_sema);
         }
     }
 }

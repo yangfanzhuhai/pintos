@@ -47,8 +47,6 @@ static struct list all_list;
 
 
 
-
-
 void
 initialise_mlfqs_queue (struct bsd_queue *bsdq)
 {
@@ -69,7 +67,6 @@ initialise_mlfqs_queues (void)
   int i;
   for (i = PRI_MIN; i < PRI_MAX; i += MLFQS_PRIORITIES_PER_QUEUE)
     {
-      printf ("i %d\n", i);
       struct bsd_queue *bsdq = &queue_arr[i / MLFQS_PRIORITIES_PER_QUEUE];
       initialise_mlfqs_queue (bsdq);
       bsdq->priority_min = i;
@@ -114,14 +111,11 @@ thread_remove_mlfqs (struct thread *t)
   struct list_elem *e;
   struct list_elem *e2;
 
-  printf ("in remove bsdqs size %d\n", list_size(&mlfqs_queues));
   /* For each bsd queue */
   for (e = list_begin (&mlfqs_queues); e != list_end (&mlfqs_queues);
        e = list_next (e))
     {
       struct bsd_queue *bsdq = list_entry (e, struct bsd_queue, bsdelem);
-
-      printf ("thread_remove_mlfqs list size of: %d\n", list_size (&bsdq->threads));
 
       /* For each thread in the current bsd queue */
       for (e2 = list_begin (&bsdq->threads); e2 != list_end (&bsdq->threads);
@@ -326,7 +320,6 @@ thread_create (const char *name, int priority,
       /* A created thread inherits its parent's niceness and recent_cpu */
       t->niceness = thread_current ()->niceness;
       t->recent_cpu = thread_current ()->recent_cpu;
-      //thread_update_recent_cpu (t,NULL);
 
       /* Dynamically calculate priority 
          Note: This overwrites the value set using init_thread */
@@ -678,26 +671,20 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->magic = THREAD_MAGIC;
 
+  /* Initialise semaphore used for thread sleeping */
+  sema_init (&t->wake_up_sema, 0);
+
   if (thread_mlfqs && MLFQS_USE_MULTILEVEL)
     {
       t->recent_cpu = 0;
-      if (!idle_thread)
-        {
-          thread_update_mlfqs_priority (t,NULL);
-        }
+      thread_update_mlfqs_priority (t,NULL);
     }
   else
     {
       t->priority = priority;
-
-      /* Luke's Implementation */
       t->base_priority = priority;
-      /* Luke's implementation */
       list_init (&t->donors);
-      /* End */
     }
-
-
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -725,9 +712,10 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
+
   /* Multilevel feedback queue is enabled */
   if (thread_mlfqs && MLFQS_USE_MULTILEVEL)
-    {  
+    {
       struct list_elem *e;
 
       /* Return the thread with the highest priority */
@@ -965,7 +953,16 @@ thread_calculate_mlfqs_priority (struct thread *t)
   int32_t int_dbl_nice = t->niceness << 1;
   int32_t int_priority = PRI_MAX - round_fp_to_int (fp_recent_cpu_div_4);
   int_priority = int_priority - int_dbl_nice;
-  return (int)int_priority;
+
+  /* Restrict to a minimum priority of PRI_MIN */
+  if ((int)int_priority < PRI_MIN)
+    {
+      return PRI_MIN;
+    }
+  else
+    {
+      return (int)int_priority;
+    }
 }
 
 /* Update the value of the priority of the given thread according to the
@@ -977,39 +974,34 @@ thread_update_mlfqs_priority (struct thread *t, void *aux UNUSED)
 {
   ASSERT (thread_mlfqs);
 
-  /* Don't adjust the priority of the idle thread */
-  //if (t == idle_thread)
-  //  {
-  //    return;
-  //  }
+  /* Idle thread must always have the minimum priority */
+  if (t == idle_thread)
+    {
+      t->priority = PRI_MIN;
+      return;
+    }
 
   int old_priority = t->priority;
   t->priority = thread_calculate_mlfqs_priority (t);
 
 
-  /* The current thread is not in the queue so no need to reposition */
-  //if (t == thread_current ())
-  //  {
-  //    return;
-  //  }
+  /* If the thread is queued (status is THREAD_READY) and the thread's priority
+     has changed, reinsert the thread in the queue in the correct position
 
-
-  /* If the multilevel feed back queue priority has changed, remove the thread
-     from the mlfqs and re insert in the new correct position */
-  if (t->priority != old_priority)
+     Note: it is necessary to ensure the thread is ready since every thread
+           (including blocked threads) will have their priority updated */
+  if (t->priority != old_priority && t->status == THREAD_READY)
     {
       /* Reinsert in the correct queue */
       if (MLFQS_USE_MULTILEVEL)
         {
-          //thread_remove_mlfqs (t);
-          //thread_insert_mlfqs (t);
-          
+          thread_remove_mlfqs (t);
+          thread_insert_mlfqs (t);
         }
       else
         {
-          //list_remove (&t->elem);
-          //list_insert_ordered (&ready_list, &t->elem, higher_priority, NULL);
-          list_sort (&ready_list, higher_priority, NULL);
+          list_remove (&t->elem);
+          list_insert_ordered (&ready_list, &t->elem, higher_priority, NULL);
         }
     }
 }

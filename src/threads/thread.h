@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -100,6 +101,7 @@ struct thread
     int niceness;                       /* Niceness. */
     int32_t recent_cpu;                 /* recent_cpu */
     int64_t wake_up_tick;               /* Tick when this thread will wake up */
+    struct semaphore wake_up_sema;      /* Semaphore to sleep the thread */
     struct list_elem bsdelem;           /* List element for bsd queue. */
     struct list_elem sleepelem;         /* List element for sleeping threads. */
     struct list_elem allelem;           /* List element for all threads list. */
