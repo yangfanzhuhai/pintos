@@ -499,7 +499,7 @@ thread_yield (void)
       /* Standard queue */
       else
         {
-          list_insert_ordered(&ready_list, &cur->elem, higher_priority, NULL);
+          list_insert_ordered (&ready_list, &cur->elem, higher_priority, NULL);
         }
     }
   cur->status = THREAD_READY;
