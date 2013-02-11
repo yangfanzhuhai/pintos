@@ -23,6 +23,8 @@ static int64_t ticks;
 /* A list of threads that are currently sleeping */ 
 static struct list sleeping_threads;
 
+static struct lock sleep_lock;
+
 /* Number of loops per timer tick.
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
@@ -43,6 +45,9 @@ timer_init (void)
 
   /* Initialise sleeping_threads as a new empty list */
   list_init (&sleeping_threads);
+
+  /* Initialise the sleep lock */
+  lock_init (&sleep_lock);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -90,16 +95,49 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
+
+bool 
+lower_wake_up_tick (const struct list_elem *elem1, 
+  const struct list_elem *elem2,	void *aux UNUSED)
+{
+	ASSERT(elem1 != NULL);
+	ASSERT(elem2 != NULL);
+	struct thread *thread1 
+		= list_entry (elem1, struct thread, sleepelem);
+	struct thread *thread2 
+		= list_entry (elem2, struct thread, sleepelem);
+	return thread1->wake_up_tick < thread2->wake_up_tick;
+}
+
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
 timer_sleep (int64_t ticks) 
 {
+  enum intr_level old_level;
+
   ASSERT (intr_get_level () == INTR_ON);
   
+  /* Obtain the thread we want to sleep and when it should wake up 
+     (before lock) */
   struct thread *t = thread_current ();
   t->wake_up_tick = timer_ticks () + ticks;
-  list_push_back (&sleeping_threads, &t->sleepelem);
+
+
+  /* Locked region - insert the thread into the list of sleeping threads.
+     Protects against multiple threads calling thread_sleep at the same time */
+  lock_acquire (&sleep_lock);
+    {
+      /* Disable interrupts to protect against timer interrupts */
+      old_level = intr_disable ();
+        {
+          list_insert_ordered 
+              (&sleeping_threads, &t->sleepelem, lower_wake_up_tick, NULL);
+        }
+      intr_set_level (old_level);  
+    }
+  lock_release (&sleep_lock);
+
   sema_down (&t->wake_up_sema);
 }
 
@@ -120,6 +158,10 @@ timer_wake (void)
         {
           list_remove (e);
           sema_up (&t->wake_up_sema);
+        }
+      else
+        {
+          return;
         }
     }
 }
