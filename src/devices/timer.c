@@ -20,11 +20,6 @@
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
 
-/* A list of threads that are currently sleeping */ 
-static struct list sleeping_threads;
-
-static struct lock sleep_lock;
-
 /* Number of loops per timer tick.
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
@@ -42,12 +37,6 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
-
-  /* Initialise sleeping_threads as a new empty list */
-  list_init (&sleeping_threads);
-
-  /* Initialise the sleep lock */
-  lock_init (&sleep_lock);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -95,75 +84,16 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
-
-static bool 
-lower_wake_up_tick (const struct list_elem *elem1, 
-  const struct list_elem *elem2,	void *aux UNUSED)
-{
-	ASSERT(elem1 != NULL);
-	ASSERT(elem2 != NULL);
-	struct thread *thread1 
-		= list_entry (elem1, struct thread, sleepelem);
-	struct thread *thread2 
-		= list_entry (elem2, struct thread, sleepelem);
-	return thread1->wake_up_tick < thread2->wake_up_tick;
-}
-
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
 timer_sleep (int64_t ticks) 
 {
-  enum intr_level old_level;
+  int64_t start = timer_ticks ();
 
   ASSERT (intr_get_level () == INTR_ON);
-  
-  /* Obtain the thread we want to sleep and when it should wake up 
-     (before lock) */
-  struct thread *t = thread_current ();
-  t->wake_up_tick = timer_ticks () + ticks;
-
-
-  /* Locked region - insert the thread into the list of sleeping threads.
-     Protects against multiple threads calling thread_sleep at the same time */
-  lock_acquire (&sleep_lock);
-    {
-      /* Disable interrupts to protect against timer interrupts */
-      old_level = intr_disable ();
-        {
-          list_insert_ordered 
-              (&sleeping_threads, &t->sleepelem, lower_wake_up_tick, NULL);
-        }
-      intr_set_level (old_level);  
-    }
-  lock_release (&sleep_lock);
-
-  sema_down (&t->wake_up_sema);
-}
-
-/* Check all sleeping threads to see if its time for the thread to wake up */
-void
-timer_wake (void)
-{
-  struct list_elem *e;
-
-  ASSERT (intr_get_level () == INTR_OFF);
-
-  for (e = list_begin (&sleeping_threads); e != list_end (&sleeping_threads);
-       e = list_next (e))
-    {
-      struct thread *t = list_entry (e, struct thread, sleepelem);
-      
-      if (t->wake_up_tick <= ticks)
-        {
-          list_remove (e);
-          sema_up (&t->wake_up_sema);
-        }
-      else
-        {
-          return;
-        }
-    }
+  while (timer_elapsed (start) < ticks) 
+    thread_yield ();
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -242,29 +172,6 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
-
- /* Multilevel feedback queue operations */
-  if (thread_mlfqs)
-    {
-      /* Increment recent_cpu of current thread if not the idle thread */
-      thread_increment_recent_cpu ();
-
-      /* Every 4th tick */
-      if (timer_ticks () % 4 == 0)
-        {
-          threads_update_mlfqs_priority ();
-        }
-
-      /* Every second */
-      if (timer_ticks () % (TIMER_FREQ) == 0)
-        {
-          update_load_avg ();
-          threads_update_recent_cpu ();
-        }
-    }
-
-  /* Wake sleeping threads */
-  timer_wake ();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
@@ -337,5 +244,3 @@ real_time_delay (int64_t num, int32_t denom)
   ASSERT (denom % 1000 == 0);
   busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000)); 
 }
-
-
