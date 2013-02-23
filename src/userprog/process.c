@@ -28,9 +28,19 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
-  char *fn_copy;
-  tid_t tid;
+	/* Impose a limit of 4KB on the length of the command line arguments*/
+	if (strlen (file_name) > PGSIZE) 
+		thread_exit ();
 
+  char *fn_copy;
+
+	/*yangfan*/
+	char *program_name;  
+	char *saveptr1;
+	/*==yangfan*/
+
+	tid_t tid;
+	
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
@@ -38,8 +48,19 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+		/*yangfan*/
+	program_name = strtok_r (fn_copy, " ", &saveptr1);
+	/*==yangfan*/
+
+	/*
+	printf ("file_name: %s\n", file_name);
+	printf ("program_name: %s\n", program_name);
+	printf ("fn_copy: %s\n", fn_copy);
+	printf ("saveptr1: %s\n", saveptr1);
+	*/
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (program_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -53,6 +74,8 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
+
+	/*printf ("In start_process () file_name_: %s\n", (char *) file_name_);*/
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -88,7 +111,8 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  return -1;
+	while (true) {};
+	//return -1;
 }
 
 /* Free the current process's resources. */

@@ -16,7 +16,7 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
-  void *esp = f->esp;
+  /*void *esp = f->esp;
   if (esp == NULL || !is_user_vaddr (esp) || 
         pagedir_get_page (active_pd (), esp) == NULL) 
         {
@@ -25,7 +25,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         }
   
         
-        
+  */     
   printf ("system call!\n");
   thread_exit ();
 }
