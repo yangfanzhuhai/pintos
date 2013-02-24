@@ -3,6 +3,9 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
+#include "lib/user/syscall.h"
+#include "userprog/pagedir.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -15,7 +18,7 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
-  esp = f->esp;
+  uint32_t *esp = f->esp;
 
   if (!(check_ptr_valid (esp) && check_ptr_valid (esp + 1) 
      && check_ptr_valid (esp + 2) && check_ptr_valid (esp + 3)))
@@ -25,7 +28,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   }
   else
   {
-    syscall_number = *esp;
+    uint32_t syscall_number = *esp;
     switch (syscall_number)
     {
       case SYS_HALT:
@@ -74,6 +77,56 @@ syscall_handler (struct intr_frame *f UNUSED)
 
 }
 
+void halt (void)
+{
+}
+void exit (int status)
+{
+}
+pid_t exec (const char *file)
+{
+  return NULL;
+}
+int wait (pid_t pid)
+{
+  return NULL;
+}
+bool create (const char *file, unsigned initial_size)
+{
+  return NULL;
+}
+bool remove (const char *file)
+{
+  return NULL;
+}
+int open (const char *file)
+{
+  return NULL;
+}
+int filesize (int fd)
+{
+  return NULL;
+}
+int read (int fd, void *buffer, unsigned length)
+{
+  return NULL;
+}
+int write (int fd, const void *buffer, unsigned length)
+{
+  return NULL;
+}
+void seek (int fd, unsigned position)
+{
+}
+unsigned tell (int fd)
+{
+  return NULL;
+}
+void close (int fd)
+{
+}
+
+
 bool check_ptr_valid (const void *ptr)
 {
 
@@ -81,7 +134,7 @@ bool check_ptr_valid (const void *ptr)
   uint32_t *pd = thread_current()->pagedir;
 
   return ptr != NULL && is_user_vaddr (ptr) && 
-         pagedir_get_page (pd,ptr)) != NULL;
+         pagedir_get_page (pd,ptr) != NULL;
 }
 
 
