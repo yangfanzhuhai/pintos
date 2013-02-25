@@ -7,6 +7,21 @@
 #include "lib/user/syscall.h"
 #include "userprog/pagedir.h"
 
+/* Sys handler prototypes */
+static void sys_halt (void);
+static void sys_exit (int status);
+static pid_t sys_exec (const char *file);
+static int sys_wait (pid_t pid);
+static bool sys_create (const char *file, unsigned initial_size);
+static bool sys_remove (const char *file);
+static int sys_open (const char *file);
+static int sys_filesize (int fd);
+static int sys_read (int fd, void *buffer, unsigned length);
+static int sys_write (int fd, const void *buffer, unsigned length);
+static void sys_seek (int fd, unsigned position);
+static unsigned sys_tell (int fd);
+static void sys_close (int fd);
+
 static void syscall_handler (struct intr_frame *);
 
 void
@@ -32,43 +47,43 @@ syscall_handler (struct intr_frame *f UNUSED)
     switch (syscall_number)
     {
       case SYS_HALT:
-        halt ();
+        sys_halt ();
         break;
       case SYS_EXIT:
-        exit (*(esp + 1));
+        sys_exit (*(esp + 1));
         break;
       case SYS_EXEC:
-        f->eax = exec ((char *) *(esp + 1));
+        f->eax = sys_exec ((char *) *(esp + 1));
         break;
       case SYS_WAIT:
-        f->eax = wait (*(esp + 1));
+        f->eax = sys_wait (*(esp + 1));
         break;
       case SYS_CREATE:
-        f->eax = create ((char *) *(esp + 1), *(esp + 2));
+        f->eax = sys_create ((char *) *(esp + 1), *(esp + 2));
         break;
       case SYS_REMOVE:
-        f->eax = remove ((char *) *(esp + 1));
+        f->eax = sys_remove ((char *) *(esp + 1));
         break;
       case SYS_OPEN:
-        f->eax = open ((char *) *(esp + 1));
+        f->eax = sys_open ((char *) *(esp + 1));
         break;
       case SYS_FILESIZE:
-	      f->eax = filesize (*(esp + 1));
+	      f->eax = sys_filesize (*(esp + 1));
 	      break;
       case SYS_READ:
-        f->eax = read (*(esp + 1), (void *) *(esp + 2), *(esp + 3));
+        f->eax = sys_read (*(esp + 1), (void *) *(esp + 2), *(esp + 3));
         break;
       case SYS_WRITE:
-        f->eax = write (*(esp + 1), (void *) *(esp + 2), *(esp + 3));
+        f->eax = sys_write (*(esp + 1), (void *) *(esp + 2), *(esp + 3));
         break;
       case SYS_SEEK:
-        seek (*(esp + 1), *(esp + 2));
+        sys_seek (*(esp + 1), *(esp + 2));
         break;
       case SYS_TELL:
-        f->eax = tell (*(esp + 1));
+        f->eax = sys_tell (*(esp + 1));
         break;
       case SYS_CLOSE:
-        close (*(esp + 1));
+        sys_close (*(esp + 1));
         break;
       default:
         break;
@@ -77,52 +92,52 @@ syscall_handler (struct intr_frame *f UNUSED)
 
 }
 
-void halt (void)
+static void sys_halt (void)
 {
 }
-void exit (int status)
+static void sys_exit (int status)
 {
 }
-pid_t exec (const char *file)
-{
-  return NULL;
-}
-int wait (pid_t pid)
+static pid_t sys_exec (const char *file)
 {
   return NULL;
 }
-bool create (const char *file, unsigned initial_size)
+static int sys_wait (pid_t pid)
 {
   return NULL;
 }
-bool remove (const char *file)
+static bool sys_create (const char *file, unsigned initial_size)
 {
   return NULL;
 }
-int open (const char *file)
+static bool sys_remove (const char *file)
 {
   return NULL;
 }
-int filesize (int fd)
+static int sys_open (const char *file)
 {
   return NULL;
 }
-int read (int fd, void *buffer, unsigned length)
+static int sys_filesize (int fd)
 {
   return NULL;
 }
-int write (int fd, const void *buffer, unsigned length)
+static int sys_read (int fd, void *buffer, unsigned length)
 {
   return NULL;
 }
-void seek (int fd, unsigned position)
-{
-}
-unsigned tell (int fd)
+static int sys_write (int fd, const void *buffer, unsigned length)
 {
   return NULL;
 }
-void close (int fd)
+static void sys_seek (int fd, unsigned position)
+{
+}
+static unsigned sys_tell (int fd)
+{
+  return NULL;
+}
+static void sys_close (int fd)
 {
 }
 
