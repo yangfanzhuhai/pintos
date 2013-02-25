@@ -30,18 +30,18 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
-	/* Impose a limit of 4KB on the length of the command line arguments*/
-	if (strlen (file_name) > PGSIZE) 
-		thread_exit ();
-		// to be changed after syscall exit is implemented.
-		// exit (-1);
+  /* Impose a limit of 4KB on the length of the command line arguments*/
+  if (strlen (file_name) > PGSIZE) 
+    thread_exit ();
+    // to be changed after syscall exit is implemented.
+    // exit (-1);
 
   char *fn_copy;
-	char *fn_copy1;
-	char *program_name;
-	char *saveptr;
-	tid_t tid;
-	
+  char *fn_copy1;
+  char *program_name;
+  char *saveptr;
+  tid_t tid;
+  
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
@@ -49,18 +49,18 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
-	/* Make a second copy of FILE_NAME for strtok_r(). */
+  /* Make a second copy of FILE_NAME for strtok_r(). */
   fn_copy1 = palloc_get_page (0);
   if (fn_copy1 == NULL)
     return TID_ERROR;
   strlcpy (fn_copy1, file_name, PGSIZE);
 
-	program_name = strtok_r (fn_copy1, " ", &saveptr);
+  program_name = strtok_r (fn_copy1, " ", &saveptr);
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (program_name, PRI_DEFAULT, start_process, fn_copy);
 
-	palloc_free_page (fn_copy1);
+  palloc_free_page (fn_copy1);
   if (tid == TID_ERROR) 
     palloc_free_page (fn_copy); 
   return tid;
@@ -74,36 +74,36 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
-	
-	/* Pointers for strtok_r (). */
-	char *rest;
-	char *saveptr;
-	char *token;
+  
+  /* Pointers for strtok_r (). */
+  char *rest;
+  char *saveptr;
+  char *token;
 
-	/* An array of pointer to the char pointers of each token. */
-	char **tokens;
+  /* An array of pointer to the char pointers of each token. */
+  char **tokens;
 
-	/* Tokenised file_name. */
-	char *fn_copy;
+  /* Tokenised file_name. */
+  char *fn_copy;
 
-	int args_count;
-	int i;
-	int numbytes;
-	int totalbytes;
-	void *original_esp;
-	uint8_t word_align;
+  int args_count;
+  int i;
+  int numbytes;
+  int totalbytes;
+  void *original_esp;
+  uint8_t word_align;
 
-	fn_copy = palloc_get_page (0);
+  fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
     thread_exit ();
   strlcpy (fn_copy, file_name, PGSIZE);
 
-	tokens = palloc_get_page (0);
+  tokens = palloc_get_page (0);
   if (tokens == NULL)
     thread_exit ();
-	memset (tokens, '\0', sizeof tokens / sizeof (char *));
+  memset (tokens, '\0', sizeof tokens / sizeof (char *));
 
-	/* Store the pointers to the tokenised arguments in tokens. */
+  /* Store the pointers to the tokenised arguments in tokens. */
   args_count = 0;
   for (args_count = 0, rest = fn_copy; ; args_count++, rest = NULL) 
     {
@@ -112,13 +112,13 @@ start_process (void *file_name_)
       if (token == NULL)
         break;      
       /* Found the next argument. */
-   		tokens[args_count] = token;
+       tokens[args_count] = token;
     }
  
   for (i = 0; i < args_count; i++)
     printf ("arg %d: %s\n", i, tokens[i]);
   
-	printf ("args_count %d\n", args_count);
+  printf ("args_count %d\n", args_count);
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -128,59 +128,59 @@ start_process (void *file_name_)
   success = load (tokens[0], &if_.eip, &if_.esp);
   
   /* If load succeeded, set up the stack with the arguments. */
-	if (success)
-		{	
-			original_esp = if_.esp;
-			totalbytes = 0;
+  if (success)
+    {  
+      original_esp = if_.esp;
+      totalbytes = 0;
 
-			/* Push the arguments onto the stack, one by one, in reverse order. */
-			for (i = args_count - 1; i > 0; i--)
-				{
-					numbytes = (strlen (tokens[i]) + 1) * sizeof (char);
-					if_.esp = if_.esp - numbytes;
-					memcpy (&(* (char *) (if_.esp)), tokens[i], numbytes);
-					totalbytes += numbytes;
-				}
-			
-			/* Round the stack pointer down to a multiple of 4 
-				for best performance. */
-			totalbytes = 4 - totalbytes % 4;
-			word_align = 0;
-			while (totalbytes > 0) 
-				{
+      /* Push the arguments onto the stack, one by one, in reverse order. */
+      for (i = args_count - 1; i > 0; i--)
+        {
+          numbytes = (strlen (tokens[i]) + 1) * sizeof (char);
+          if_.esp = if_.esp - numbytes;
+          memcpy (&(* (char *) (if_.esp)), tokens[i], numbytes);
+          totalbytes += numbytes;
+        }
+      
+      /* Round the stack pointer down to a multiple of 4 
+        for best performance. */
+      totalbytes = 4 - totalbytes % 4;
+      word_align = 0;
+      while (totalbytes > 0) 
+        {
           totalbytes--;
-					if_.esp--;
-					* (uint8_t *)if_.esp = word_align;		
-				}
-			
-			/* Push a null pointer sentinel (0). */
-			if_.esp -= sizeof (char *);
-			* (char *)if_.esp = '\0';
-			
-			/* Push pointers to the arguments (again in reverse). */
-			for (i = args_count - 1; i > 0; i++)
-				{
-					original_esp -= (strlen (tokens[i]) + 1) * sizeof (char);
-					if_.esp -= sizeof (char *);
-					* (void **)if_.esp = original_esp;
-				}
-			
-			/* Push a pointer to the first pointer. */
-			if_.esp -= sizeof (char **);
-			* (char **)if_.esp = if_.esp + sizeof (char **);
-			
-			/* Push the number of arguments. */
-			if_.esp -= sizeof (int);
-			* (int *)if_.esp = args_count - 1;			
+          if_.esp--;
+          * (uint8_t *)if_.esp = word_align;    
+        }
+      
+      /* Push a null pointer sentinel (0). */
+      if_.esp -= sizeof (char *);
+      * (char *)if_.esp = '\0';
+      
+      /* Push pointers to the arguments (again in reverse). */
+      for (i = args_count - 1; i > 0; i++)
+        {
+          original_esp -= (strlen (tokens[i]) + 1) * sizeof (char);
+          if_.esp -= sizeof (char *);
+          * (void **)if_.esp = original_esp;
+        }
+      
+      /* Push a pointer to the first pointer. */
+      if_.esp -= sizeof (char **);
+      * (char **)if_.esp = if_.esp + sizeof (char **);
+      
+      /* Push the number of arguments. */
+      if_.esp -= sizeof (int);
+      * (int *)if_.esp = args_count - 1;      
 
-			/* Push a fake return address (0). */
-			if_.esp -= 4;
-			* (void **)if_.esp = 0;		
-		}
+      /* Push a fake return address (0). */
+      if_.esp -= 4;
+      * (void **)if_.esp = 0;    
+    }
 
-	palloc_free_page (fn_copy);
-	palloc_free_page (tokens);
-	palloc_free_page (file_name);
+  palloc_free_page (fn_copy);
+  palloc_free_page (tokens);
+  palloc_free_page (file_name);
 
   /* If load failed, quit. */  
   if (!success) 
@@ -208,8 +208,8 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-	while (true) {};
-	return -1;
+  while (true) {};
+  return -1;
 }
 
 /* Free the current process's resources. */
