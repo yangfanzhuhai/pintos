@@ -15,6 +15,7 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
+#include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
@@ -31,6 +32,8 @@ process_execute (const char *file_name)
 	/* Impose a limit of 4KB on the length of the command line arguments*/
 	if (strlen (file_name) > PGSIZE) 
 		thread_exit ();
+		// to be changed after syscall exit is implemented.
+		// exit (-1);
 
   char *fn_copy;
 	/*yangfan*/ 
@@ -46,12 +49,11 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
 	file_name = strtok_r ( (char *)file_name, " ", &saveptr);
-	
-/*
+
 	printf ("file_name: %s\n", file_name);
 	printf ("fn_copy: %s\n", fn_copy);
 	printf ("saveptr: %s\n", saveptr);
-	*/
+	
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
@@ -67,28 +69,76 @@ start_process (void *file_name_)
 {
 	/*yangfan*/
 	char *saveptr;
-	char *program_name;
+	char *token;
+	char *rest;
+	char **tokens;
+	int args_count;
+	int i;
+	int j;
 	/* == yangfan*/
 
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
+  
+  /* Store the pointers to the tokenised arguments in tokens. */
+  tokens = calloc (5, sizeof (char*));
+   
+  if (tokens == NULL) 
+    thread_exit ();
+  for(i = 0; i < 5; i++) 
+    {
+      tokens[i] = calloc(20, sizeof(char));
+      
+      if (tokens[i] == NULL) 
+        thread_exit ();
+    }
+   
+  args_count = 0;
+  
+  for (i = 1, rest = file_name; ; i++, rest = NULL) 
+    {
+      token = strtok_r (rest, " ", &saveptr);
+      
+      // Break when reach the end of the string. 
+      if (token == NULL)
+        break;
+      
+      // Find the next argument. 
+      printf("token %d: %s\n", args_count, token);
+      strlcpy(tokens[args_count], token, sizeof (tokens[args_count]));
+      printf ("arg %d: %s\n", args_count, tokens[args_count]);
+      args_count++;
 
-	program_name = strtok_r (file_name, " ", &saveptr);
-
+      while (*saveptr == ' ')
+        saveptr++;
+    }
+ 
+  printf("args_count %d\n", args_count);
+  printf("file_name %s\n", file_name);
+  printf("file_name %p\n", &file_name);
+  //if (args_count > 0)
+  //if (tokens[0] != NULL)
+   // printf ("arg %p\n", 0, &tokens[0]);
+  //for (j = 0; j < args_count; j++)
+    //printf ("arg %d: %s\n", j, tokens[j]);
+  
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-
-
-
-  success = load (program_name, &if_.eip, &if_.esp);
-
+  success = load (file_name, &if_.eip, &if_.esp);
+  
+  /* If load succeeded, set up the stack with the arguments. */
+  
+  
+  for(i = 0; i < 5; i++) 
+      free(tokens[i]);
+  free(tokens);
+  
   /* If load failed, quit. */
   palloc_free_page (file_name);
-
   if (!success) 
     thread_exit ();
 
@@ -114,7 +164,7 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-	//while (true) {};
+	while (true) {};
 	return -1;
 }
 
@@ -464,7 +514,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE;
+        *esp = PHYS_BASE - 12;
       else
         palloc_free_page (kpage);
     }
