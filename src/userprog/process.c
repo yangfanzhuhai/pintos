@@ -83,20 +83,11 @@ start_process (void *file_name_)
   /* An array of pointer to the char pointers of each token. */
   char **tokens;
 
-  /* Tokenised file_name. */
-  char *fn_copy;
-
   int args_count;
   int i;
   int numbytes;
   int totalbytes;
   void *original_esp;
-  uint8_t word_align;
-
-  fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
-    thread_exit ();
-  strlcpy (fn_copy, file_name, PGSIZE);
 
   tokens = palloc_get_page (0);
   if (tokens == NULL)
@@ -105,7 +96,7 @@ start_process (void *file_name_)
 
   /* Store the pointers to the tokenised arguments in tokens. */
   args_count = 0;
-  for (args_count = 0, rest = fn_copy; ; args_count++, rest = NULL) 
+  for (args_count = 0, rest = file_name; ; args_count++, rest = NULL) 
     {
       token = strtok_r (rest, " ", &saveptr);
       /* Break when reach the end of the string. */
@@ -145,13 +136,12 @@ start_process (void *file_name_)
         
       /* Round the stack pointer down to a multiple of 4 
         for best performance. */
-      totalbytes = 4 - totalbytes % 4;
-      word_align = 0;
-      while (totalbytes % 4 > 0) 
+      totalbytes = (4 - totalbytes % 4) % 4;
+      while (totalbytes > 0) 
         {
           totalbytes--;
           if_.esp -= sizeof (uint8_t);
-          * (uint8_t *)if_.esp = word_align;    
+          * (uint8_t *)if_.esp = 0;    
         }
       
       /* Push a null pointer sentinel (0). */
@@ -179,9 +169,8 @@ start_process (void *file_name_)
       * (void **)if_.esp = 0;    
     }
 
-  hex_dump((uintptr_t)if_.esp, if_.esp, 200, true);
+  //hex_dump((uintptr_t)if_.esp, if_.esp, 200, true);
   
-  palloc_free_page (fn_copy);
   palloc_free_page (tokens);
   palloc_free_page (file_name);
 
