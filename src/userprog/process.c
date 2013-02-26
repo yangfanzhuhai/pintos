@@ -114,12 +114,13 @@ start_process (void *file_name_)
       /* Found the next argument. */
        tokens[args_count] = token;
     }
- 
+  /*
   for (i = 0; i < args_count; i++)
     printf ("arg %d: %s\n", i, tokens[i]);
   
   printf ("args_count %d\n", args_count);
-
+  */
+  
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -137,19 +138,19 @@ start_process (void *file_name_)
       for (i = args_count - 1; i > 0; i--)
         {
           numbytes = (strlen (tokens[i]) + 1) * sizeof (char);
-          if_.esp = if_.esp - numbytes;
-          memcpy (&(* (char *) (if_.esp)), tokens[i], numbytes);
+          if_.esp -= numbytes;
+          memcpy (if_.esp, tokens[i], numbytes);
           totalbytes += numbytes;
         }
-      
+        
       /* Round the stack pointer down to a multiple of 4 
         for best performance. */
       totalbytes = 4 - totalbytes % 4;
       word_align = 0;
-      while (totalbytes > 0) 
+      while (totalbytes % 4 > 0) 
         {
           totalbytes--;
-          if_.esp--;
+          if_.esp -= sizeof (uint8_t);
           * (uint8_t *)if_.esp = word_align;    
         }
       
@@ -158,7 +159,7 @@ start_process (void *file_name_)
       * (char *)if_.esp = '\0';
       
       /* Push pointers to the arguments (again in reverse). */
-      for (i = args_count - 1; i > 0; i++)
+      for (i = args_count - 1; i > 0; i--)
         {
           original_esp -= (strlen (tokens[i]) + 1) * sizeof (char);
           if_.esp -= sizeof (char *);
@@ -178,6 +179,8 @@ start_process (void *file_name_)
       * (void **)if_.esp = 0;    
     }
 
+  hex_dump((uintptr_t)if_.esp, if_.esp, 200, true);
+  
   palloc_free_page (fn_copy);
   palloc_free_page (tokens);
   palloc_free_page (file_name);
@@ -558,7 +561,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE - 12;
+        *esp = PHYS_BASE;
       else
         palloc_free_page (kpage);
     }
