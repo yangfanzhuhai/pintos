@@ -65,6 +65,7 @@ static void idle (void *aux UNUSED);
 static struct thread *running_thread (void);
 static struct thread *next_thread_to_run (void);
 static void init_thread (struct thread *, const char *name, int priority);
+static struct child *init_child_status (tid_t tid); 
 static bool is_thread (struct thread *) UNUSED;
 static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
@@ -170,6 +171,7 @@ thread_create (const char *name, int priority,
   struct kernel_thread_frame *kf;
   struct switch_entry_frame *ef;
   struct switch_threads_frame *sf;
+  struct child *child_status;
   tid_t tid;
   enum intr_level old_level;
 
@@ -183,7 +185,13 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
-
+  
+  /* Initialize the parent pointer and child status struct. */
+  t->parent = thread_current ();
+  child_status = init_child_status (tid);
+  list_push_back(&thread_current ()->children, 
+                  &child_status->elem);
+  
   /* Prepare thread for first run by initializing its stack.
      Do this atomically so intermediate values for the 'stack' 
      member cannot be observed. */
@@ -298,10 +306,53 @@ thread_exit (void)
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
+  
+  /* Go through the list of children, and frees each child status 
+    struct. */
+  struct list *childern;
+  children = &thread_current ()->childern;
+  
+  while (!list_empty (children))
+    {
+      struct list_elem *e = list_pop_front (children);
+      struct child *c = list_entry (e, struct child, elem);
+      free (c);
+    }
+  
+  /* Inform the parent on its termination. */
+  if (thread_current ()->parent != NULL)
+    {
+      struct child *c = look_up_child (thread_current ()->parent, 
+                                      thread_current ()->tid);
+      /* Assert is used because a child must be in the parent's
+        children list. */
+      ASSERT (c != NULL);
+      c->alive = false;
+    }
+    
   list_remove (&thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
+}
+
+/* Look up tid in parent's children, return struct child if found.
+  Return NULL otherwise. */
+struct child *
+look_up_child (struct thread *parent, tid_t tid)
+{
+  ASSERT (parent != NULL);
+  
+  struct list *children = &parent->children;
+  struct list_elem *e;
+  for (e = list_begin (children); e != list_end (children);
+        e = list_next (e))
+    {
+      struct child *c = list_entry (e, struct child, elem);
+      if (c->tid == thread_current ()->tid)
+        return c;
+    }
+  return NULL;  
 }
 
 /* Yields the CPU.  The current thread is not put to sleep and
@@ -355,7 +406,7 @@ thread_get_priority (void)
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) 
+thread_  (int nice UNUSED) 
 {
   /* Not yet implemented. */
 }
@@ -471,10 +522,31 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  
+  /* Initialise the children list and the parent pointer. */
+  list_init (&t->children);
+  t->parent = NULL;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
+}
+
+static struct child *
+init_child_status (tid_t tid) 
+{
+  struct child *c;
+  c = calloc (1, sizeof (struct child));
+  if (c == NULL)
+    thread_exit ();
+  c->tid = tid;
+  c->alive = true;
+  c->waited_already = false;
+  
+  /* Default exit status. Will be updated if sys_exit () 
+    is called on this thread. */
+  c->exit_status = -1;
+  return c;
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
