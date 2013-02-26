@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "malloc.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -31,10 +32,10 @@ struct child
   tid_t tid;                            /* Child's thread id. */
   bool alive;                           /* True iff child is not         
                                             terminated. */
-  bool waited_aleady;                   /* True iff process_wait () 
+  bool waited_already;                   /* True iff process_wait () 
                                             has been called on child. */
   int exit_status;                      /* Exit status of child. */
-  list_elem elem;                        /* List element. */
+  struct list_elem elem;                        /* List element. */
 };
 
 /* A kernel thread or user process.

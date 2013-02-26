@@ -309,8 +309,8 @@ thread_exit (void)
   
   /* Go through the list of children, and frees each child status 
     struct. */
-  struct list *childern;
-  children = &thread_current ()->childern;
+  struct list *children;
+  children = &thread_current ()->children;
   
   while (!list_empty (children))
     {
@@ -349,7 +349,7 @@ look_up_child (struct thread *parent, tid_t tid)
         e = list_next (e))
     {
       struct child *c = list_entry (e, struct child, elem);
-      if (c->tid == thread_current ()->tid)
+      if (c->tid == tid)
         return c;
     }
   return NULL;  
@@ -406,7 +406,7 @@ thread_get_priority (void)
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_  (int nice UNUSED) 
+thread_set_nice (int nice UNUSED) 
 {
   /* Not yet implemented. */
 }
