@@ -159,7 +159,13 @@ static int sys_read (int fd, void *buffer, unsigned length)
   /* Reading from normal file */
   else
   {
-    
+    // Search file desciptor list and find file if it can be found
+      // If it can
+        // Call file_read_at using data, length, seek position (returns the num
+        // bytes actually read)
+      // Else
+        // Return -1 to indicate file cannot be found
+   
     return bytesRead;
   }
 }
