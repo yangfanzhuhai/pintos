@@ -6,6 +6,9 @@
 #include "threads/vaddr.h"
 #include "lib/user/syscall.h"
 #include "userprog/pagedir.h"
+#include "devices/input.h"
+
+#define SYS_READ_KEYBOARD 0
 
 /* Sys handler prototypes */
 static void sys_halt (void);
@@ -122,10 +125,44 @@ static int sys_filesize (int fd)
 {
   return NULL;
 }
+
+/* System read */
 static int sys_read (int fd, void *buffer, unsigned length)
 {
-  return NULL;
+
+  int bytesRead = 0;
+
+  /* If we're reading from keyboard */
+  if (fd == SYS_READ_KEYBOARD)
+  {
+    /* Read up to "length" bytes from keyboard */
+    while (bytesRead < (int)length)
+    {
+      char readChar = input_getc();
+      char* currentChar = (char*)buffer + bytesRead; 
+
+      /* Terminate input if user presses enter */
+      if (readChar == '\n')
+      {
+        *currentChar = '\0';
+        break;
+      }
+      *currentChar = readChar;
+      bytesRead++;
+    }
+    return bytesRead;
+  }
+  
+  /* Reading from normal file */
+  else
+  {
+    
+    return bytesRead;
+  }
 }
+
+
+
 static int sys_write (int fd, const void *buffer, unsigned length)
 {
   return NULL;
