@@ -8,7 +8,10 @@
 #include "userprog/pagedir.h"
 #include "devices/input.h"
 
-#define SYS_READ_KEYBOARD 0
+#define SYS_IO_STDIN 0
+#define SYS_IO_STDOUT 1
+#define SYS_IO_STDOUT_BUFFER_SIZE 256
+#define SYS_IO_STDOUT_BUFFER_ENABLED false
 
 /* Sys handler prototypes */
 static void sys_halt (void);
@@ -133,7 +136,7 @@ static int sys_read (int fd, void *buffer, unsigned length)
   int bytesRead = 0;
 
   /* If we're reading from keyboard */
-  if (fd == SYS_READ_KEYBOARD)
+  if (fd == SYS_IO_STDIN)
   {
     /* Read up to "length" bytes from keyboard */
     while (bytesRead < (int)length)
@@ -162,10 +165,59 @@ static int sys_read (int fd, void *buffer, unsigned length)
 }
 
 
-
+/*
+Writes size bytes from buffer to the open file fd. Returns the number of bytes actually
+written, which may be less than size if some bytes could not be written.
+Writing past end-of-file would normally extend the file, but file growth is not implemented
+by the basic file system. The expected behavior is to write as many bytes as possible up to
+end-of-file and return the actual number written, or 0 if no bytes could be written at all.
+Fd 1 writes to the console. Your code to write to the console should write all of buffer in
+one call to putbuf(), at least as long as size is not bigger than a few hundred bytes. (It is
+reasonable to break up larger buffers.) Otherwise, lines of text output by different processes
+may end up interleaved on the console, confusing both human readers and our grading scripts.
+*/
 static int sys_write (int fd, const void *buffer, unsigned length)
 {
-  return NULL;
+  /* --- --- --- --- --- --- ---*
+   * Write to console           *
+   * --- --- --- --- --- --- ---*/
+  if (fd == SYS_IO_STDOUT)
+  {
+    /* Split buffer into sub buffers */
+    if (SYS_IO_STDOUT_BUFFER_ENABLED)
+    { 
+      int i;
+      int subBufferCount = length / SYS_IO_STDOUT_BUFFER_SIZE;
+      for (i = 0; i < subBufferCount; i++)
+      {
+        int bufferOffset = i * SYS_IO_STDOUT_BUFFER_SIZE;
+
+        int bufferLength = SYS_IO_STDOUT_BUFFER_SIZE;
+        if (i + 1 == subBufferCount)
+        {
+          bufferLength = length % SYS_IO_STDOUT_BUFFER_SIZE;
+        }
+
+        putbuf (buffer + bufferOffset, bufferLength);
+      }
+    }
+    /* Push entire buffer as single block */
+    else
+    {
+      putbuf (buffer, length);
+    }
+    
+    /* Will write the length specified */
+    return length;
+  }
+
+  /* --- --- --- --- --- --- ---*
+   * Write to file              *
+   * --- --- --- --- --- --- ---*/
+  else
+  {
+    int bytesWritten = 0;
+  }
 }
 static void sys_seek (int fd, unsigned position)
 {
