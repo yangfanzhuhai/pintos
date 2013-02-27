@@ -5,6 +5,8 @@
 #include <list.h>
 #include <stdint.h>
 
+#define SYS_IO_MAX_FILES 128
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -94,8 +96,8 @@ struct thread
     struct list_elem elem;              /* List element. */
 
     /* File descriptors */
-    int nextFd;
-    //list of fds
+    int next_fd;
+    struct list open_files;             /* Files opened by this process */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

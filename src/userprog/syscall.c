@@ -7,11 +7,13 @@
 #include "lib/user/syscall.h"
 #include "userprog/pagedir.h"
 #include "devices/input.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
+#include <stdlib.h>
 
-#define SYS_IO_STDIN 0
-#define SYS_IO_STDOUT 1
+
 #define SYS_IO_STDOUT_BUFFER_SIZE 256
-#define SYS_IO_STDOUT_BUFFER_ENABLED false
+#define SYS_IO_STDOUT_BUFFER_ENABLED true
 
 /* Sys handler prototypes */
 static void sys_halt (void);
@@ -27,6 +29,8 @@ static int sys_write (int fd, const void *buffer, unsigned length);
 static void sys_seek (int fd, unsigned position);
 static unsigned sys_tell (int fd);
 static void sys_close (int fd);
+
+static struct file_descriptor* get_thread_file (int fd);
 
 static void syscall_handler (struct intr_frame *);
 
@@ -101,43 +105,83 @@ syscall_handler (struct intr_frame *f UNUSED)
 static void sys_halt (void)
 {
 }
-static void sys_exit (int status)
+static void sys_exit (UNUSED int status)
 {
 }
-static pid_t sys_exec (const char *file)
+static pid_t sys_exec (UNUSED const char *file)
 {
-  return NULL;
+  return 0;
 }
-static int sys_wait (pid_t pid)
+static int sys_wait (UNUSED pid_t pid)
 {
-  return NULL;
+  return 0;
 }
-static bool sys_create (const char *file, unsigned initial_size)
+static bool sys_create (UNUSED const char *file, UNUSED unsigned initial_size)
 {
-  return NULL;
+  return true;
 }
-static bool sys_remove (const char *file)
+static bool sys_remove (UNUSED const char *file)
 {
-  return NULL;
+  return true;
 }
-static int sys_open (const char *file)
+
+
+/* Open file */
+static int sys_open (const char *fileName)
 {
-  return NULL;
+  struct file* f = filesys_open (fileName);
+
+  /* File doesn't exist */
+  if (f == NULL)
+  {
+    return -1;
+  }
+
+  /* Max file open limit reached */
+  if (list_size (&thread_current()->open_files) >= SYS_IO_MAX_FILES)
+  {
+    return -1;
+  }
+
+  /* Create file desciptor */
+  struct file_descriptor *f_d = (struct file_descriptor*)
+    malloc (sizeof (struct file_descriptor));
+  f_d->file = f;
+  f_d->fd = thread_current()->next_fd++;
+
+  // Insert the opened file into the current thread's open file list
+  list_push_front (&thread_current()->open_files, &f_d->elem);
+
+  return f_d->fd;  
 }
+
+
+
 static int sys_filesize (int fd)
 {
-  return NULL;
+  struct file_descriptor *f_d = get_thread_file (fd);
+
+  // fd not found -> file contains nothing
+  if (f_d == NULL)
+  {
+    return -1;
+  }
+  else
+  {
+    return file_length (f_d->file);
+  }
 }
+
+
 
 /* System read */
 static int sys_read (int fd, void *buffer, unsigned length)
 {
-
-  int bytesRead = 0;
-
-  /* If we're reading from keyboard */
-  if (fd == SYS_IO_STDIN)
+  /* If we're reading from STDIN */
+  if (fd == STDIN_FILENO)
   {
+    int bytesRead = 0;
+
     /* Read up to "length" bytes from keyboard */
     while (bytesRead < (int)length)
     {
@@ -159,14 +203,16 @@ static int sys_read (int fd, void *buffer, unsigned length)
   /* Reading from normal file */
   else
   {
-    // Search file desciptor list and find file if it can be found
-      // If it can
-        // Call file_read_at using data, length, seek position (returns the num
-        // bytes actually read)
-      // Else
-        // Return -1 to indicate file cannot be found
-   
-    return bytesRead;
+    struct file_descriptor *f_d = get_thread_file (fd);
+
+    if (f_d == NULL)
+    {
+      return -1;
+    }
+    else
+    {
+      return file_read (f_d->file, buffer, length); 
+    }
   }
 }
 
@@ -187,7 +233,7 @@ static int sys_write (int fd, const void *buffer, unsigned length)
   /* --- --- --- --- --- --- ---*
    * Write to console           *
    * --- --- --- --- --- --- ---*/
-  if (fd == SYS_IO_STDOUT)
+  if (fd == STDOUT_FILENO)
   {
     /* Split buffer into sub buffers */
     if (SYS_IO_STDOUT_BUFFER_ENABLED)
@@ -222,17 +268,40 @@ static int sys_write (int fd, const void *buffer, unsigned length)
    * --- --- --- --- --- --- ---*/
   else
   {
-    int bytesWritten = 0;
+    struct file_descriptor *f_d = get_thread_file (fd);
+
+    /* No bytes could be written since file doesn't exist */
+    if (f_d == NULL)
+    {
+      return 0;
+    }
+
+    /* File does exist */
+    else
+    {
+      return file_write (f_d->file, buffer, length);
+    }
+   
   }
 }
+
+/* Seek the file to the given position */
 static void sys_seek (int fd, unsigned position)
 {
+  struct file_descriptor *f_d = get_thread_file (fd);
+  file_seek (f_d->file, position);
 }
+
+
+/* Get the seek position of the file */
 static unsigned sys_tell (int fd)
 {
-  return NULL;
+  struct file_descriptor *f_d = get_thread_file (fd);
+  file_tell (f_d->file);
 }
-static void sys_close (int fd)
+
+
+static void sys_close (UNUSED int fd)
 {
 }
 
@@ -248,4 +317,28 @@ bool check_ptr_valid (const void *ptr)
 }
 
 
+
+
+static struct file_descriptor* get_thread_file (int fd)
+{
+  /* Iterate list of open files owned by the thread and return thread matching
+     the thread we're looking for */
+  struct list_elem *e;
+
+  for (e = list_begin (&thread_current()->open_files); 
+       e != list_end (&thread_current()->open_files);
+       e = list_next (e))
+    {
+      struct file_descriptor *f_d = list_entry (e, struct file_descriptor,
+        elem);
+
+      if (f_d->fd == fd)
+      {
+        return f_d;
+      }
+    }
+
+  /* Not found */
+  return NULL;
+}
 
