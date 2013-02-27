@@ -560,6 +560,9 @@ init_thread (struct thread *t, const char *name, int priority)
   /* Initialise the thread's default exit status. */
   t->own_exit_status = -1;
 
+  sema_init (&t->exec_wait, 0);
+  t->loaded_successfully = false;
+  
   t->next_fd = 2;
   list_init (&t->open_files);
 

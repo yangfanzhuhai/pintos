@@ -115,7 +115,12 @@ struct thread
     struct list children;               /* List of child processes. */
     struct thread *parent;              /* Parent process. */
     int own_exit_status;                /* Its own exit status. */
-
+struct semaphore exec_wait;              /* Semaphore for waiting the 
+                                            child to load the executable
+                                            before returning from sys_exec. */ 
+    bool loaded_successfully;           /* True iff the child's executable
+                                          is loaded successfully. */
+    
     /* File descriptors */
     int next_fd;
     struct list open_files;             /* Files opened by this process */

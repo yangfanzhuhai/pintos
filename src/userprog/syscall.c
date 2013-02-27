@@ -160,12 +160,14 @@ static void sys_exit (int status)
   thread_exit();
 }
 
-static pid_t sys_exec (const char *file)
+static pid_t 
+sys_exec (const char *file)
 {
-  return (pid_t) (process_execute (file));
+  return (pid_t) process_execute (file);
 }
 
-static int sys_wait (pid_t pid)
+static int 
+sys_wait (pid_t pid)
 {
   return process_wait ((tid_t)pid); 
 }
@@ -176,7 +178,8 @@ static int sys_wait (pid_t pid)
    Creating a new file does not open it: 
       Opening the new file is a separate operation which would require a open 
       system call. */
-static bool sys_create (const char *file, unsigned initial_size)
+static bool 
+sys_create (const char *file, unsigned initial_size)
 {
   return filesys_create (file, initial_size);
 }
@@ -190,14 +193,16 @@ static bool sys_create (const char *file, unsigned initial_size)
    from the file. The file will not have a name, and no other processes will be
    able to open it, but it will continue to exist until all file descriptors
    referring to the file are closed or the machine shuts down. */
-static bool sys_remove (const char *file)
+static bool 
+sys_remove (const char *file)
 {
   return true;
 }
 
 
 /* Open file */
-static int sys_open (const char *fileName)
+static int 
+sys_open (const char *fileName)
 {
   struct file* f = filesys_open (fileName);
 
@@ -227,7 +232,8 @@ static int sys_open (const char *fileName)
 
 
 
-static int sys_filesize (int fd)
+static int 
+sys_filesize (int fd)
 {
   struct file_descriptor *f_d = get_thread_file (fd);
 
@@ -245,7 +251,8 @@ static int sys_filesize (int fd)
 
 
 /* System read */
-static int sys_read (int fd, void *buffer, unsigned length)
+static int 
+sys_read (int fd, void *buffer, unsigned length)
 {
   /* If we're reading from STDIN */
   if (fd == STDIN_FILENO)
@@ -298,7 +305,8 @@ one call to putbuf(), at least as long as size is not bigger than a few hundred 
 reasonable to break up larger buffers.) Otherwise, lines of text output by different processes
 may end up interleaved on the console, confusing both human readers and our grading scripts.
 */
-static int sys_write (int fd, const void *buffer, unsigned length)
+static int 
+sys_write (int fd, const void *buffer, unsigned length)
 {
   /* --- --- --- --- --- --- ---*
    * Write to console           *
@@ -356,7 +364,8 @@ static int sys_write (int fd, const void *buffer, unsigned length)
 }
 
 /* Seek the file to the given position */
-static void sys_seek (int fd, unsigned position)
+static void 
+sys_seek (int fd, unsigned position)
 {
   struct file_descriptor *f_d = get_thread_file (fd);
   file_seek (f_d->file, position);
@@ -364,14 +373,16 @@ static void sys_seek (int fd, unsigned position)
 
 
 /* Get the seek position of the file */
-static unsigned sys_tell (int fd)
+static unsigned 
+sys_tell (int fd)
 {
   struct file_descriptor *f_d = get_thread_file (fd);
   return file_tell (f_d->file);
 }
 
 
-static void sys_close (int fd)
+static void 
+sys_close (int fd)
 {
   struct file_descriptor *f_d = get_thread_file (fd);
 
@@ -383,7 +394,8 @@ static void sys_close (int fd)
   }
 }
 
-static struct file_descriptor* get_thread_file (int fd)
+static struct file_descriptor* 
+get_thread_file (int fd)
 {
   /* Iterate list of open files owned by the thread and return thread matching
      the thread we're looking for */

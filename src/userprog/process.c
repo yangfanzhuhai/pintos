@@ -61,7 +61,15 @@ process_execute (const char *file_name)
   
   if (tid == TID_ERROR) 
     palloc_free_page (fn_copy); 
-  
+  else
+    {
+      /* Waits for the child to load its executable. If the child program
+        cannot load or run for any reason, set tid to -1. */
+      sema_down (&thread_current ()->exec_wait);
+     
+      if (!thread_current ()->loaded_successfully) 
+        tid = -1;
+    }
   return tid;
 }
 
@@ -112,6 +120,10 @@ start_process (void *file_name_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (tokens[0], &if_.eip, &if_.esp);
   
+  /* Inform the parent on the current process' load status. */
+  thread_current ()->parent->loaded_successfully = success;
+  sema_up (&thread_current ()->parent->exec_wait);
+
   /* If load succeeded, set up the stack with the arguments. */
   if (success)
     {  
@@ -161,12 +173,10 @@ start_process (void *file_name_)
       if_.esp -= 4;
       * (void **)if_.esp = 0;    
     }
-
-  //hex_dump((uintptr_t)if_.esp, if_.esp, 200, true);
   
   palloc_free_page (tokens);
   palloc_free_page (file_name);
-
+  
   /* If load failed, quit. */  
   if (!success) 
     thread_exit ();
