@@ -9,7 +9,7 @@
 #include "devices/input.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
-#include <stdlib.h>
+#include "threads/malloc.h"
 
 
 #define SYS_IO_STDOUT_BUFFER_SIZE 256
@@ -105,8 +105,23 @@ syscall_handler (struct intr_frame *f UNUSED)
 static void sys_halt (void)
 {
 }
-static void sys_exit (UNUSED int status)
+static void sys_exit (int status)
 {
+
+  /* Close all files that this thread has open */
+  while (!list_empty (&thread_current()->open_files))
+  {
+    struct list_elem *e = list_pop_front (&thread_current()->open_files);
+  
+    struct file_descriptor *f_d = list_entry (e, struct file_descriptor,
+        elem);
+
+    file_close (f_d->file);
+
+    free(f_d);
+  }
+
+  thread_exit();
 }
 static pid_t sys_exec (UNUSED const char *file)
 {
@@ -116,10 +131,28 @@ static int sys_wait (UNUSED pid_t pid)
 {
   return 0;
 }
-static bool sys_create (UNUSED const char *file, UNUSED unsigned initial_size)
+
+/* Creates a new file called file initially initial size bytes in size. 
+   Returns true if successful, false otherwise. 
+
+   Creating a new file does not open it: 
+      Opening the new file is a separate operation which would require a open 
+      system call. */
+static bool sys_create (const char *file, UNUSED unsigned initial_size)
 {
-  return true;
+  return filesys_create (file, initial_size);
 }
+
+
+/* Deletes the file called file. Returns true if successful, false otherwise. 
+   A file may be removed regardless of whether it is open or closed, and 
+   removing an open file does not close it.
+
+   When a file is removed any process which has a file descriptor for that file
+   may continue to use that descriptor. This means that they can read and write
+   from the file. The file will not have a name, and no other processes will be
+   able to open it, but it will continue to exist until all file descriptors
+   referring to the file are closed or the machine shuts down. */
 static bool sys_remove (UNUSED const char *file)
 {
   return true;
@@ -297,12 +330,20 @@ static void sys_seek (int fd, unsigned position)
 static unsigned sys_tell (int fd)
 {
   struct file_descriptor *f_d = get_thread_file (fd);
-  file_tell (f_d->file);
+  return file_tell (f_d->file);
 }
 
 
-static void sys_close (UNUSED int fd)
+static void sys_close (int fd)
 {
+  struct file_descriptor *f_d = get_thread_file (fd);
+
+  if (f_d != NULL)
+  {
+    list_remove (&f_d->elem);
+    file_close (f_d->file);
+    free (f_d);
+  }
 }
 
 
