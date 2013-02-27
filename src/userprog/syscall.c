@@ -160,9 +160,9 @@ static void sys_exit (int status)
   thread_exit();
 }
 
-static pid_t sys_exec (UNUSED const char *file)
+static pid_t sys_exec (const char *file)
 {
-  return 0;
+  return (pid_t) (process_execute (file));
 }
 
 static int sys_wait (pid_t pid)

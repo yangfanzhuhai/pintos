@@ -32,9 +32,7 @@ process_execute (const char *file_name)
 {
   /* Impose a limit of 4KB on the length of the command line arguments*/
   if (strlen (file_name) > PGSIZE) 
-    thread_exit ();
-    // to be changed after syscall exit is implemented.
-    // exit (-1);
+    return -1;
 
   char *fn_copy;
   char *fn_copy1;
@@ -106,12 +104,6 @@ start_process (void *file_name_)
       /* Found the next argument. */
        tokens[args_count] = token;
     }
-  /*
-  for (i = 0; i < args_count; i++)
-    printf ("arg %d: %s\n", i, tokens[i]);
-  
-  printf ("args_count %d\n", args_count);
-  */
   
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
