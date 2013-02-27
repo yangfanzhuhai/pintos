@@ -8,6 +8,8 @@
 #include "malloc.h"
 #include "synch.h"
 
+#define SYS_IO_MAX_FILES 128
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -113,6 +115,10 @@ struct thread
     struct list children;               /* List of child processes. */
     struct thread *parent;              /* Parent process. */
     int own_exit_status;                /* Its own exit status. */
+
+    /* File descriptors */
+    int next_fd;
+    struct list open_files;             /* Files opened by this process */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

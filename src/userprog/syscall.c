@@ -6,6 +6,14 @@
 #include "threads/vaddr.h"
 #include "lib/user/syscall.h"
 #include "userprog/pagedir.h"
+#include "devices/input.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
+#include "threads/malloc.h"
+
+
+#define SYS_IO_STDOUT_BUFFER_SIZE 256
+#define SYS_IO_STDOUT_BUFFER_ENABLED true
 
 /* Sys handler prototypes */
 static void sys_halt (void);
@@ -21,6 +29,8 @@ static int sys_write (int fd, const void *buffer, unsigned length);
 static void sys_seek (int fd, unsigned position);
 static unsigned sys_tell (int fd);
 static void sys_close (int fd);
+
+static struct file_descriptor* get_thread_file (int fd);
 
 static void syscall_handler (struct intr_frame *);
 
@@ -98,6 +108,21 @@ static void sys_halt (void)
 static void sys_exit (int status)
 {
   struct thread *cur = thread_current ();
+  
+  /* Close all files that this thread has open */
+  while (!list_empty (&cur->open_files))
+  {
+    struct list_elem *e = list_pop_front (&cur->open_files);
+  
+    struct file_descriptor *f_d = list_entry (e, struct file_descriptor,
+        elem);
+
+    file_close (f_d->file);
+
+    free(f_d);
+  }
+  
+  /* Update the child status struct in the parent's children list. */
   if (cur->parent != NULL)
     {
       struct child *child = look_up_child (cur->parent, cur->tid);
@@ -108,8 +133,11 @@ static void sys_exit (int status)
     }
 
   cur->own_exit_status = status;
+  
+  thread_exit();
 }
-static pid_t sys_exec (const char *file)
+
+static pid_t sys_exec (UNUSED const char *file)
 {
   return 0;
 }
@@ -119,39 +147,217 @@ static int sys_wait (pid_t pid)
   return process_wait ((tid_t)pid); 
 }
 
-static bool sys_create (const char *file, unsigned initial_size)
+/* Creates a new file called file initially initial size bytes in size. 
+   Returns true if successful, false otherwise. 
+
+   Creating a new file does not open it: 
+      Opening the new file is a separate operation which would require a open 
+      system call. */
+static bool sys_create (const char *file, UNUSED unsigned initial_size)
 {
-  return false;
+  return filesys_create (file, initial_size);
 }
-static bool sys_remove (const char *file)
+
+/* Deletes the file called file. Returns true if successful, false otherwise. 
+   A file may be removed regardless of whether it is open or closed, and 
+   removing an open file does not close it.
+
+   When a file is removed any process which has a file descriptor for that file
+   may continue to use that descriptor. This means that they can read and write
+   from the file. The file will not have a name, and no other processes will be
+   able to open it, but it will continue to exist until all file descriptors
+   referring to the file are closed or the machine shuts down. */
+static bool sys_remove (UNUSED const char *file)
 {
-  return false;
+  return true;
 }
-static int sys_open (const char *file)
+
+
+/* Open file */
+static int sys_open (const char *fileName)
 {
-  return 0;
+  struct file* f = filesys_open (fileName);
+
+  /* File doesn't exist */
+  if (f == NULL)
+  {
+    return -1;
+  }
+
+  /* Max file open limit reached */
+  if (list_size (&thread_current()->open_files) >= SYS_IO_MAX_FILES)
+  {
+    return -1;
+  }
+
+  /* Create file desciptor */
+  struct file_descriptor *f_d = (struct file_descriptor*)
+    malloc (sizeof (struct file_descriptor));
+  f_d->file = f;
+  f_d->fd = thread_current()->next_fd++;
+
+  // Insert the opened file into the current thread's open file list
+  list_push_front (&thread_current()->open_files, &f_d->elem);
+
+  return f_d->fd;  
 }
+
+
+
 static int sys_filesize (int fd)
 {
-  return 0;
+  struct file_descriptor *f_d = get_thread_file (fd);
+
+  // fd not found -> file contains nothing
+  if (f_d == NULL)
+  {
+    return -1;
+  }
+  else
+  {
+    return file_length (f_d->file);
+  }
 }
+
+
+
+/* System read */
 static int sys_read (int fd, void *buffer, unsigned length)
 {
-  return 0;
+  /* If we're reading from STDIN */
+  if (fd == STDIN_FILENO)
+  {
+    int bytesRead = 0;
+
+    /* Read up to "length" bytes from keyboard */
+    while (bytesRead < (int)length)
+    {
+      char readChar = input_getc();
+      char* currentChar = (char*)buffer + bytesRead; 
+
+      /* Terminate input if user presses enter */
+      if (readChar == '\n')
+      {
+        *currentChar = '\0';
+        break;
+      }
+      *currentChar = readChar;
+      bytesRead++;
+    }
+    return bytesRead;
+  }
+  
+  /* Reading from normal file */
+  else
+  {
+    struct file_descriptor *f_d = get_thread_file (fd);
+
+    if (f_d == NULL)
+    {
+      return -1;
+    }
+    else
+    {
+      return file_read (f_d->file, buffer, length); 
+    }
+  }
 }
+
+
+/*
+Writes size bytes from buffer to the open file fd. Returns the number of bytes actually
+written, which may be less than size if some bytes could not be written.
+Writing past end-of-file would normally extend the file, but file growth is not implemented
+by the basic file system. The expected behavior is to write as many bytes as possible up to
+end-of-file and return the actual number written, or 0 if no bytes could be written at all.
+Fd 1 writes to the console. Your code to write to the console should write all of buffer in
+one call to putbuf(), at least as long as size is not bigger than a few hundred bytes. (It is
+reasonable to break up larger buffers.) Otherwise, lines of text output by different processes
+may end up interleaved on the console, confusing both human readers and our grading scripts.
+*/
 static int sys_write (int fd, const void *buffer, unsigned length)
 {
-  return 0;
+  /* --- --- --- --- --- --- ---*
+   * Write to console           *
+   * --- --- --- --- --- --- ---*/
+  if (fd == STDOUT_FILENO)
+  {
+    /* Split buffer into sub buffers */
+    if (SYS_IO_STDOUT_BUFFER_ENABLED)
+    { 
+      int i;
+      int subBufferCount = length / SYS_IO_STDOUT_BUFFER_SIZE;
+      for (i = 0; i < subBufferCount; i++)
+      {
+        int bufferOffset = i * SYS_IO_STDOUT_BUFFER_SIZE;
+
+        int bufferLength = SYS_IO_STDOUT_BUFFER_SIZE;
+        if (i + 1 == subBufferCount)
+        {
+          bufferLength = length % SYS_IO_STDOUT_BUFFER_SIZE;
+        }
+
+        putbuf (buffer + bufferOffset, bufferLength);
+      }
+    }
+    /* Push entire buffer as single block */
+    else
+    {
+      putbuf (buffer, length);
+    }
+    
+    /* Will write the length specified */
+    return length;
+  }
+
+  /* --- --- --- --- --- --- ---*
+   * Write to file              *
+   * --- --- --- --- --- --- ---*/
+  else
+  {
+    struct file_descriptor *f_d = get_thread_file (fd);
+
+    /* No bytes could be written since file doesn't exist */
+    if (f_d == NULL)
+    {
+      return 0;
+    }
+
+    /* File does exist */
+    else
+    {
+      return file_write (f_d->file, buffer, length);
+    }
+   
+  }
 }
+
+/* Seek the file to the given position */
 static void sys_seek (int fd, unsigned position)
 {
+  struct file_descriptor *f_d = get_thread_file (fd);
+  file_seek (f_d->file, position);
 }
+
+
+/* Get the seek position of the file */
 static unsigned sys_tell (int fd)
 {
-  return 0;
+  struct file_descriptor *f_d = get_thread_file (fd);
+  return file_tell (f_d->file);
 }
+
+
 static void sys_close (int fd)
 {
+  struct file_descriptor *f_d = get_thread_file (fd);
+
+  if (f_d != NULL)
+  {
+    list_remove (&f_d->elem);
+    file_close (f_d->file);
+    free (f_d);
+  }
 }
 
 
@@ -166,4 +372,28 @@ bool check_ptr_valid (const void *ptr)
 }
 
 
+
+
+static struct file_descriptor* get_thread_file (int fd)
+{
+  /* Iterate list of open files owned by the thread and return thread matching
+     the thread we're looking for */
+  struct list_elem *e;
+
+  for (e = list_begin (&thread_current()->open_files); 
+       e != list_end (&thread_current()->open_files);
+       e = list_next (e))
+    {
+      struct file_descriptor *f_d = list_entry (e, struct file_descriptor,
+        elem);
+
+      if (f_d->fd == fd)
+      {
+        return f_d;
+      }
+    }
+
+  /* Not found */
+  return NULL;
+}
 
