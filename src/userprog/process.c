@@ -127,7 +127,7 @@ start_process (void *file_name_)
       totalbytes = 0;
 
       /* Push the arguments onto the stack, one by one, in reverse order. */
-      for (i = args_count - 1; i > 0; i--)
+      for (i = args_count - 1; i >= 0; i--)
         {
           numbytes = (strlen (tokens[i]) + 1) * sizeof (char);
           if_.esp -= numbytes;
@@ -150,7 +150,7 @@ start_process (void *file_name_)
       * (char *)if_.esp = '\0';
       
       /* Push pointers to the arguments (again in reverse). */
-      for (i = args_count - 1; i > 0; i--)
+      for (i = args_count - 1; i >= 0; i--)
         {
           original_esp -= (strlen (tokens[i]) + 1) * sizeof (char);
           if_.esp -= sizeof (char *);
@@ -163,7 +163,7 @@ start_process (void *file_name_)
       
       /* Push the number of arguments. */
       if_.esp -= sizeof (int);
-      * (int *)if_.esp = args_count - 1;      
+      * (int *)if_.esp = args_count;      
 
       /* Push a fake return address (0). */
       if_.esp -= 4;

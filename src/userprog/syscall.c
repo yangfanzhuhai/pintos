@@ -10,10 +10,11 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "threads/malloc.h"
+#include "devices/shutdown.h"
 
 
 #define SYS_IO_STDOUT_BUFFER_SIZE 256
-#define SYS_IO_STDOUT_BUFFER_ENABLED true
+#define SYS_IO_STDOUT_BUFFER_ENABLED false
 
 /* Sys handler prototypes */
 static void sys_halt (void);
@@ -33,6 +34,8 @@ static void sys_close (int fd);
 static struct file_descriptor* get_thread_file (int fd);
 
 static void syscall_handler (struct intr_frame *);
+static bool check_ptr_valid (const void *ptr);
+static void exit_on_invalid_ptr (const void *ptr);
 
 void
 syscall_init (void) 
@@ -41,70 +44,90 @@ syscall_init (void)
 }
 
 static void
-syscall_handler (struct intr_frame *f UNUSED) 
+syscall_handler (struct intr_frame *f) 
 {
   uint32_t *esp = f->esp;
+  
+  exit_on_invalid_ptr (esp);
+  exit_on_invalid_ptr (esp + 1);
+  exit_on_invalid_ptr (esp + 2);
+  exit_on_invalid_ptr (esp + 3);
 
-  if (!(check_ptr_valid (esp) && check_ptr_valid (esp + 1) 
-     && check_ptr_valid (esp + 2) && check_ptr_valid (esp + 3)))
+  uint32_t syscall_number = *esp;
+  switch (syscall_number)
   {
-    //Maybe change for sys_exit when implemented
+    case SYS_HALT:
+      sys_halt ();
+      break;
+    case SYS_EXIT:
+      sys_exit (*(esp + 1));
+      break;
+    case SYS_EXEC:
+      exit_on_invalid_ptr ((void *)*(esp + 1));
+      f->eax = sys_exec ((char *) *(esp + 1));
+      break;
+    case SYS_WAIT:
+      f->eax = sys_wait (*(esp + 1));
+      break;
+    case SYS_CREATE:
+      exit_on_invalid_ptr ((void *)*(esp + 1));
+      f->eax = sys_create ((char *) *(esp + 1), *(esp + 2));
+      break;
+    case SYS_REMOVE:
+      exit_on_invalid_ptr ((void *)*(esp + 1));
+      f->eax = sys_remove ((char *) *(esp + 1));
+      break;
+    case SYS_OPEN:
+      exit_on_invalid_ptr ((void *)*(esp + 1));
+      f->eax = sys_open ((char *) *(esp + 1));
+      break;
+    case SYS_FILESIZE:
+      f->eax = sys_filesize (*(esp + 1));
+      break;
+    case SYS_READ:
+      exit_on_invalid_ptr ((void *)*(esp + 2));
+      f->eax = sys_read (*(esp + 1), (void *) *(esp + 2), *(esp + 3));
+      break;
+    case SYS_WRITE:
+      exit_on_invalid_ptr ((void *)*(esp + 2));
+      f->eax = sys_write (*(esp + 1), (void *) *(esp + 2), *(esp + 3));
+      break;
+    case SYS_SEEK:
+      sys_seek (*(esp + 1), *(esp + 2));
+      break;
+    case SYS_TELL:
+      f->eax = sys_tell (*(esp + 1));
+      break;
+    case SYS_CLOSE:
+      sys_close (*(esp + 1));
+      break;
+    default:
+      break; 
+  }
+}
+
+static bool 
+check_ptr_valid (const void *ptr)
+{
+  //Maybe change for static uint32_t *active_pd (void) in pagedir.c
+  uint32_t *pd = thread_current()->pagedir;
+
+  return ptr != NULL && is_user_vaddr (ptr) &&  
+         pagedir_get_page (pd,ptr) != NULL;
+}
+
+static void 
+exit_on_invalid_ptr (const void *ptr)
+{
+  if (!check_ptr_valid (ptr))
     thread_exit ();
-  }
-  else
-  {
-    uint32_t syscall_number = *esp;
-    switch (syscall_number)
-    {
-      case SYS_HALT:
-        sys_halt ();
-        break;
-      case SYS_EXIT:
-        sys_exit (*(esp + 1));
-        break;
-      case SYS_EXEC:
-        f->eax = sys_exec ((char *) *(esp + 1));
-        break;
-      case SYS_WAIT:
-        f->eax = sys_wait (*(esp + 1));
-        break;
-      case SYS_CREATE:
-        f->eax = sys_create ((char *) *(esp + 1), *(esp + 2));
-        break;
-      case SYS_REMOVE:
-        f->eax = sys_remove ((char *) *(esp + 1));
-        break;
-      case SYS_OPEN:
-        f->eax = sys_open ((char *) *(esp + 1));
-        break;
-      case SYS_FILESIZE:
-	      f->eax = sys_filesize (*(esp + 1));
-	      break;
-      case SYS_READ:
-        f->eax = sys_read (*(esp + 1), (void *) *(esp + 2), *(esp + 3));
-        break;
-      case SYS_WRITE:
-        f->eax = sys_write (*(esp + 1), (void *) *(esp + 2), *(esp + 3));
-        break;
-      case SYS_SEEK:
-        sys_seek (*(esp + 1), *(esp + 2));
-        break;
-      case SYS_TELL:
-        f->eax = sys_tell (*(esp + 1));
-        break;
-      case SYS_CLOSE:
-        sys_close (*(esp + 1));
-        break;
-      default:
-        break;
-    }
-  }
-
 }
 
 static void sys_halt (void)
 {
+  shutdown_power_off ();
 }
+
 static void sys_exit (int status)
 {
   struct thread *cur = thread_current ();
@@ -153,7 +176,7 @@ static int sys_wait (pid_t pid)
    Creating a new file does not open it: 
       Opening the new file is a separate operation which would require a open 
       system call. */
-static bool sys_create (const char *file, UNUSED unsigned initial_size)
+static bool sys_create (const char *file, unsigned initial_size)
 {
   return filesys_create (file, initial_size);
 }
@@ -167,7 +190,7 @@ static bool sys_create (const char *file, UNUSED unsigned initial_size)
    from the file. The file will not have a name, and no other processes will be
    able to open it, but it will continue to exist until all file descriptors
    referring to the file are closed or the machine shuts down. */
-static bool sys_remove (UNUSED const char *file)
+static bool sys_remove (const char *file)
 {
   return true;
 }
@@ -359,20 +382,6 @@ static void sys_close (int fd)
     free (f_d);
   }
 }
-
-
-bool check_ptr_valid (const void *ptr)
-{
-
-  //Maybe change for static uint32_t *active_pd (void) in pagedir.c
-  uint32_t *pd = thread_current()->pagedir;
-
-  return ptr != NULL && is_user_vaddr (ptr) && 
-         pagedir_get_page (pd,ptr) != NULL;
-}
-
-
-
 
 static struct file_descriptor* get_thread_file (int fd)
 {

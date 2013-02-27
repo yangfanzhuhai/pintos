@@ -5,6 +5,5 @@
 #include "process.h"
 
 void syscall_init (void);
-bool check_ptr_valid (const void *ptr);
 
 #endif /* userprog/syscall.h */ 
