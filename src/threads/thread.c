@@ -307,31 +307,42 @@ thread_exit (void)
      when it calls thread_schedule_tail(). */
   intr_disable ();
   
-  /* Go through the list of children, and frees each child status 
-    struct. */
+  struct thread *cur = thread_current ();
+  /* Go through the list of children, set the children threads' 
+    parent pointers to NULL, and frees each child status struct. */
   struct list *children;
-  children = &thread_current ()->children;
+  children = &cur->children;
   
   while (!list_empty (children))
     {
       struct list_elem *e = list_pop_front (children);
       struct child *c = list_entry (e, struct child, elem);
+      tid_t tid = c->tid;       
+      if (c->alive)
+        {
+          struct thread *child = get_thread_by_tid (tid); 
+          ASSERT (c != NULL);
+          child->parent = NULL; 
+        }
       free (c);
     }
   
   /* Inform the parent on its termination. */
-  if (thread_current ()->parent != NULL)
+  if (cur->parent != NULL)
     {
-      struct child *c = look_up_child (thread_current ()->parent, 
-                                      thread_current ()->tid);
+      struct child *c = look_up_child (cur->parent, cur->tid);
       /* Assert is used because a child must be in the parent's
         children list. */
       ASSERT (c != NULL);
       c->alive = false;
+      sema_up (&c->death_note_sema);
     }
+  
+  /* Prints process termination message. */
+  printf ("%s: exit(%d)\n", cur->name, cur->own_exit_status);
     
-  list_remove (&thread_current()->allelem);
-  thread_current ()->status = THREAD_DYING;
+  list_remove (&cur->allelem);
+  cur->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
 }
@@ -351,6 +362,25 @@ look_up_child (struct thread *parent, tid_t tid)
       struct child *c = list_entry (e, struct child, elem);
       if (c->tid == tid)
         return c;
+    }
+  return NULL;  
+}
+
+/* Look up tid in all_list, return struct thread * if found.
+  Return NULL otherwise. */
+struct thread *
+get_thread_by_tid (tid_t tid)
+{
+  if (tid == idle_thread->tid)
+    return idle_thread;
+    
+  struct list_elem *e;
+  for (e = list_begin (&all_list); e != list_end (&all_list);
+        e = list_next (e))
+    {
+      struct thread *t = list_entry (e, struct thread, allelem);
+      if (t->tid == tid)
+        return t;
     }
   return NULL;  
 }
@@ -526,6 +556,9 @@ init_thread (struct thread *t, const char *name, int priority)
   /* Initialise the children list and the parent pointer. */
   list_init (&t->children);
   t->parent = NULL;
+  
+  /* Initialise the thread's default exit status. */
+  t->own_exit_status = -1;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -546,6 +579,8 @@ init_child_status (tid_t tid)
   /* Default exit status. Will be updated if sys_exit () 
     is called on this thread. */
   c->exit_status = -1;
+  
+  sema_init (&c->death_note_sema, 0);
   return c;
 }
 

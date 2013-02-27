@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "malloc.h"
+#include "synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -32,10 +33,12 @@ struct child
   tid_t tid;                            /* Child's thread id. */
   bool alive;                           /* True iff child is not         
                                             terminated. */
-  bool waited_already;                   /* True iff process_wait () 
+  bool waited_already;                  /* True iff process_wait () 
                                             has been called on child. */
   int exit_status;                      /* Exit status of child. */
-  struct list_elem elem;                        /* List element. */
+  struct semaphore death_note_sema;     /* Semaphore to notify parent
+                                            of child's death. */
+  struct list_elem elem;                /* List element. */
 };
 
 /* A kernel thread or user process.
@@ -109,6 +112,7 @@ struct thread
     
     struct list children;               /* List of child processes. */
     struct thread *parent;              /* Parent process. */
+    int own_exit_status;                /* Its own exit status. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -142,6 +146,7 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 struct child *look_up_child (struct thread *parent, tid_t tid);
+struct thread * get_thread_by_tid (tid_t tid);
 void thread_yield (void);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */

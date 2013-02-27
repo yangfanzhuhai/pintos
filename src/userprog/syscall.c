@@ -97,45 +97,58 @@ static void sys_halt (void)
 }
 static void sys_exit (int status)
 {
+  struct thread *cur = thread_current ();
+  if (cur->parent != NULL)
+    {
+      struct child *child = look_up_child (cur->parent, cur->tid);
+      /* Assert is used because a child must be in the parent's
+        children list. */
+      ASSERT (child != NULL);
+      child->exit_status = status;
+    }
+
+  cur->own_exit_status = status;
 }
 static pid_t sys_exec (const char *file)
 {
-  return NULL;
+  return 0;
 }
+
 static int sys_wait (pid_t pid)
 {
-  return NULL;
+  return process_wait ((tid_t)pid); 
 }
+
 static bool sys_create (const char *file, unsigned initial_size)
 {
-  return NULL;
+  return false;
 }
 static bool sys_remove (const char *file)
 {
-  return NULL;
+  return false;
 }
 static int sys_open (const char *file)
 {
-  return NULL;
+  return 0;
 }
 static int sys_filesize (int fd)
 {
-  return NULL;
+  return 0;
 }
 static int sys_read (int fd, void *buffer, unsigned length)
 {
-  return NULL;
+  return 0;
 }
 static int sys_write (int fd, const void *buffer, unsigned length)
 {
-  return NULL;
+  return 0;
 }
 static void sys_seek (int fd, unsigned position)
 {
 }
 static unsigned sys_tell (int fd)
 {
-  return NULL;
+  return 0;
 }
 static void sys_close (int fd)
 {

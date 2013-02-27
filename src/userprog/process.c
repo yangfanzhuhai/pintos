@@ -199,12 +199,31 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-  // consider adding lock 
+  
+  // consider adding lock
   struct thread *parent = thread_current ();
-  while (true) {};
-  return -1;
+
+  /* Fail when child_tid is not a direct child. */
+  struct child *child = look_up_child (parent, child_tid);
+  if (child == NULL)
+    return -1;
+  
+  /* Fail when parent has waited for the child before. */
+  if (child->waited_already)
+    return -1;
+  
+  /* Parent waits for the child. */
+  child->waited_already = true;
+  
+  /* If the child is still alive, parent waits for it to terminate. */
+  if (child->alive)
+    sema_down (&child->death_note_sema);
+  
+  ASSERT (!child->alive);
+  
+  return child->exit_status;
 }
 
 /* Free the current process's resources. */
