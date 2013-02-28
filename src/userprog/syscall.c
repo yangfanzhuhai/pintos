@@ -317,18 +317,21 @@ sys_write (int fd, const void *buffer, unsigned length)
     if (SYS_IO_STDOUT_BUFFER_ENABLED)
     { 
       int i;
-      int subBufferCount = length / SYS_IO_STDOUT_BUFFER_SIZE;
-      for (i = 0; i < subBufferCount; i++)
+      int wholeBufferCount = length / SYS_IO_STDOUT_BUFFER_SIZE;
+      int incompleteBufferLength = length % SYS_IO_STDOUT_BUFFER_SIZE;
+      
+      /* Write whole sub buffers */
+      for (i = 0; i < wholeBufferCount; i++)
       {
         int bufferOffset = i * SYS_IO_STDOUT_BUFFER_SIZE;
+        putbuf (buffer + bufferOffset, SYS_IO_STDOUT_BUFFER_SIZE);
+      }
 
-        int bufferLength = SYS_IO_STDOUT_BUFFER_SIZE;
-        if (i + 1 == subBufferCount)
-        {
-          bufferLength = length % SYS_IO_STDOUT_BUFFER_SIZE;
-        }
-
-        putbuf (buffer + bufferOffset, bufferLength);
+      /* Incomplete sub buffer to write */
+      if (incompleteBufferLength != 0)
+      {
+        int bufferOffset = wholeBufferCount * SYS_IO_STDOUT_BUFFER_SIZE;
+        putbuf (buffer + bufferOffset, incompleteBufferLength);
       }
     }
     /* Push entire buffer as single block */
