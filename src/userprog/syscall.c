@@ -7,14 +7,12 @@
 #include "lib/user/syscall.h"
 #include "userprog/pagedir.h"
 #include "devices/input.h"
-#include "filesys/file.h"
-#include "filesys/filesys.h"
 #include "threads/malloc.h"
 #include "devices/shutdown.h"
 
 
 #define SYS_IO_STDOUT_BUFFER_SIZE 256
-#define SYS_IO_STDOUT_BUFFER_ENABLED false
+#define SYS_IO_STDOUT_BUFFER_ENABLED true
 
 /* Sys handler prototypes */
 static void sys_halt (void);
@@ -132,19 +130,6 @@ static void sys_exit (int status)
 {
   struct thread *cur = thread_current ();
   
-  /* Close all files that this thread has open */
-  while (!list_empty (&cur->open_files))
-  {
-    struct list_elem *e = list_pop_front (&cur->open_files);
-  
-    struct file_descriptor *f_d = list_entry (e, struct file_descriptor,
-        elem);
-
-    file_close (f_d->file);
-
-    free(f_d);
-  }
-  
   /* Update the child status struct in the parent's children list. */
   if (cur->parent != NULL)
     {
@@ -196,7 +181,7 @@ sys_create (const char *file, unsigned initial_size)
 static bool 
 sys_remove (const char *file)
 {
-  return true;
+  return filesys_remove (file);
 }
 
 
@@ -217,19 +202,26 @@ sys_open (const char *fileName)
   {
     return -1;
   }
+  
+  return (thread_open_file (thread_current(), f))->fd;  
+}
 
-  /* Create file desciptor */
+/* Creates a file descriptor struct for the current thread based on 
+  the given file, and adds it into the open_files list. */
+struct file_descriptor *
+thread_open_file (struct thread *t, struct file *f)
+{
+  /* Create file descriptor */
   struct file_descriptor *f_d = (struct file_descriptor*)
     malloc (sizeof (struct file_descriptor));
   f_d->file = f;
-  f_d->fd = thread_current()->next_fd++;
+  f_d->fd = t->next_fd++;
 
   // Insert the opened file into the current thread's open file list
-  list_push_front (&thread_current()->open_files, &f_d->elem);
-
-  return f_d->fd;  
+  list_push_front (&t->open_files, &f_d->elem);
+  
+  return f_d;
 }
-
 
 
 static int 

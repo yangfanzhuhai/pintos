@@ -81,6 +81,7 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
+  bool memory_allocated;
   
   /* Pointers for strtok_r (). */
   char *rest;
@@ -95,10 +96,17 @@ start_process (void *file_name_)
   int numbytes;
   int totalbytes;
   void *original_esp;
-
+  
+  memory_allocated = false;
+  success = false;
+  
   tokens = palloc_get_page (0);
   if (tokens == NULL)
-    thread_exit ();
+    {
+      memory_allocated = false;
+      goto done;
+    }
+  memory_allocated = true;
   memset (tokens, '\0', sizeof tokens / sizeof (char *));
 
   /* Store the pointers to the tokenised arguments in tokens. */
@@ -120,65 +128,68 @@ start_process (void *file_name_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (tokens[0], &if_.eip, &if_.esp);
   
+  if (!success)
+    goto done;
+
+  /* If load succeeded, set up the stack with the arguments. */  
+  original_esp = if_.esp;
+  totalbytes = 0;
+
+  /* Push the arguments onto the stack, one by one, in reverse order. */
+  for (i = args_count - 1; i >= 0; i--)
+    {
+      numbytes = (strlen (tokens[i]) + 1) * sizeof (char);
+      if_.esp -= numbytes;
+      memcpy (if_.esp, tokens[i], numbytes);
+      totalbytes += numbytes;
+    }
+    
+  /* Round the stack pointer down to a multiple of 4 
+    for best performance. */
+  totalbytes = (4 - totalbytes % 4) % 4;
+  while (totalbytes > 0) 
+    {
+      totalbytes--;
+      if_.esp -= sizeof (uint8_t);
+      * (uint8_t *)if_.esp = 0;    
+    }
+  
+  /* Push a null pointer sentinel (0). */
+  if_.esp -= sizeof (char *);
+  * (char *)if_.esp = '\0';
+  
+  /* Push pointers to the arguments (again in reverse). */
+  for (i = args_count - 1; i >= 0; i--)
+    {
+      original_esp -= (strlen (tokens[i]) + 1) * sizeof (char);
+      if_.esp -= sizeof (char *);
+      * (void **)if_.esp = original_esp;
+    }
+  
+  /* Push a pointer to the first pointer. */
+  if_.esp -= sizeof (char **);
+  * (char **)if_.esp = if_.esp + sizeof (char **);
+  
+  /* Push the number of arguments. */
+  if_.esp -= sizeof (int);
+  * (int *)if_.esp = args_count;      
+
+  /* Push a fake return address (0). */
+  if_.esp -= 4;
+  * (void **)if_.esp = 0;    
+  
+ done:
+  /* We arrive here whether the program is loaded successful or not. */
+  if (memory_allocated)
+    palloc_free_page (tokens);
+  palloc_free_page (file_name);
+  
   /* Inform the parent on the current process' load status. */
   thread_current ()->parent->loaded_successfully = success;
   sema_up (&thread_current ()->parent->exec_wait);
-
-  /* If load succeeded, set up the stack with the arguments. */
-  if (success)
-    {  
-      original_esp = if_.esp;
-      totalbytes = 0;
-
-      /* Push the arguments onto the stack, one by one, in reverse order. */
-      for (i = args_count - 1; i >= 0; i--)
-        {
-          numbytes = (strlen (tokens[i]) + 1) * sizeof (char);
-          if_.esp -= numbytes;
-          memcpy (if_.esp, tokens[i], numbytes);
-          totalbytes += numbytes;
-        }
-        
-      /* Round the stack pointer down to a multiple of 4 
-        for best performance. */
-      totalbytes = (4 - totalbytes % 4) % 4;
-      while (totalbytes > 0) 
-        {
-          totalbytes--;
-          if_.esp -= sizeof (uint8_t);
-          * (uint8_t *)if_.esp = 0;    
-        }
-      
-      /* Push a null pointer sentinel (0). */
-      if_.esp -= sizeof (char *);
-      * (char *)if_.esp = '\0';
-      
-      /* Push pointers to the arguments (again in reverse). */
-      for (i = args_count - 1; i >= 0; i--)
-        {
-          original_esp -= (strlen (tokens[i]) + 1) * sizeof (char);
-          if_.esp -= sizeof (char *);
-          * (void **)if_.esp = original_esp;
-        }
-      
-      /* Push a pointer to the first pointer. */
-      if_.esp -= sizeof (char **);
-      * (char **)if_.esp = if_.esp + sizeof (char **);
-      
-      /* Push the number of arguments. */
-      if_.esp -= sizeof (int);
-      * (int *)if_.esp = args_count;      
-
-      /* Push a fake return address (0). */
-      if_.esp -= 4;
-      * (void **)if_.esp = 0;    
-    }
-  
-  palloc_free_page (tokens);
-  palloc_free_page (file_name);
   
   /* If load failed, quit. */  
-  if (!success) 
+  if (!memory_allocated || !success) 
     thread_exit ();
 
   /* Start the user process by simulating a return from an
@@ -234,7 +245,20 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+  
+  /* Close all files that this thread has open */
+  while (!list_empty (&cur->open_files))
+  {
+    struct list_elem *e = list_pop_front (&cur->open_files);
+  
+    struct file_descriptor *f_d = list_entry (e, struct file_descriptor,
+        elem);
 
+    file_close (f_d->file);
+
+    free(f_d);
+  }
+  
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -365,7 +389,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
-
+    
+  file_deny_write (file);
+  
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -449,7 +475,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  //file_close (file);
+  thread_open_file (t, file);
   return success;
 }
 
