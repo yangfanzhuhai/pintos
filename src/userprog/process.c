@@ -88,13 +88,15 @@ start_process (void *file_name_)
   char *saveptr;
   char *token;
 
-  /* An array of pointer to the char pointers of each token. */
+  /* An array of pointers, each points to the starting address of a token. */
   char **tokens;
 
   int args_count;
   int i;
   int numbytes;
   int totalbytes;
+  int stack_size;                   /* Keeps track of the stack size to 
+                                       avoid stack page overflow. */
   void *original_esp;
   
   memory_allocated = false;
@@ -143,7 +145,16 @@ start_process (void *file_name_)
       memcpy (if_.esp, tokens[i], numbytes);
       totalbytes += numbytes;
     }
-    
+  
+  /* Calculate and check the overall stack size to 
+     avoid stack page overflow. */
+  stack_size = totalbytes; 
+  stack_size += (4 - totalbytes % 4) % 4;
+  stack_size += args_count * sizeof (char *);
+  stack_size += sizeof (char **) + sizeof (int) + 4;
+  if (stack_size > PGSIZE)
+    goto done;
+  
   /* Round the stack pointer down to a multiple of 4 
     for best performance. */
   totalbytes = (4 - totalbytes % 4) % 4;
@@ -189,7 +200,7 @@ start_process (void *file_name_)
   sema_up (&thread_current ()->parent->exec_wait);
   
   /* If load failed, quit. */  
-  if (!memory_allocated || !success) 
+  if (!memory_allocated || !success || stack_size > PGSIZE) 
     thread_exit ();
 
   /* Start the user process by simulating a return from an
