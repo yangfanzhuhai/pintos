@@ -8,6 +8,7 @@
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
+#include "userprog/syscall.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -21,7 +22,6 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -79,28 +79,25 @@ static void
 start_process (void *file_name_)
 {
   char *file_name = file_name_;
+  char *save_ptr;          /* Pointer for strtok_r (). */
+  char *token;
+  char **tokens;           /* An array of pointers, each points 
+                              to the starting address of a token. */
   struct intr_frame if_;
   bool success;
   bool memory_allocated;
-  
-  /* Pointers for strtok_r (). */
-  char *rest;
-  char *saveptr;
-  char *token;
-
-  /* An array of pointers, each points to the starting address of a token. */
-  char **tokens;
-
   int args_count;
   int i;
   int numbytes;
   int totalbytes;
-  int stack_size;                   /* Keeps track of the stack size to 
-                                       avoid stack page overflow. */
+  int stack_size;          /* Keeps track of the stack size to 
+                              avoid stack page overflow. */
   void *original_esp;
   
   memory_allocated = false;
   success = false;
+  totalbytes = 0;
+  stack_size = 0;
   
   tokens = palloc_get_page (0);
   if (tokens == NULL)
@@ -109,18 +106,15 @@ start_process (void *file_name_)
       goto done;
     }
   memory_allocated = true;
-  memset (tokens, '\0', sizeof tokens / sizeof (char *));
+  memset (tokens, '\0', sizeof (tokens) / sizeof (char *));
 
   /* Store the pointers to the tokenised arguments in tokens. */
   args_count = 0;
-  for (args_count = 0, rest = file_name; ; args_count++, rest = NULL) 
+  for (token = strtok_r (file_name, " ", &save_ptr); token != NULL;
+       token = strtok_r (NULL, " ", &save_ptr))
     {
-      token = strtok_r (rest, " ", &saveptr);
-      /* Break when reach the end of the string. */
-      if (token == NULL)
-        break;      
-      /* Found the next argument. */
-       tokens[args_count] = token;
+      tokens[args_count] = token;
+      args_count++;
     }
   
   /* Initialize interrupt frame and load executable. */
@@ -135,7 +129,6 @@ start_process (void *file_name_)
 
   /* If load succeeded, set up the stack with the arguments. */  
   original_esp = if_.esp;
-  totalbytes = 0;
 
   /* Push the arguments onto the stack, one by one, in reverse order. */
   for (i = args_count - 1; i >= 0; i--)
@@ -487,7 +480,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  //file_close (file);
   thread_open_file (t, file);
   return success;
 }
