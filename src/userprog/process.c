@@ -196,7 +196,8 @@ start_process (void *file_name_)
   palloc_free_page (file_name);
   
   /* Inform the parent on the current process' load status. */
-  thread_current ()->parent->loaded_successfully = success;
+  if (memory_allocated && success && stack_size < PGSIZE)
+    thread_current ()->parent->loaded_successfully = true;
   sema_up (&thread_current ()->parent->exec_wait);
   
   /* If load failed, quit. */  
