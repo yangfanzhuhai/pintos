@@ -241,15 +241,18 @@ thread_open_file (struct thread *t, struct file *f)
 static int 
 sys_filesize (int fd)
 {
+  lock_acquire (&filesys_lock);
   struct file_descriptor *f_d = get_thread_file (fd);
 
   // fd not found -> file contains nothing
   if (f_d == NULL)
     {
+      lock_release (&filesys_lock);
       return -1;
     }
   else
     {
+      lock_release (&filesys_lock);
       return file_length (f_d->file);
     }
 }
@@ -260,6 +263,18 @@ sys_filesize (int fd)
 static int 
 sys_read (int fd, void *buffer, unsigned length)
 {
+
+  int i = 1;
+
+  while ( buffer + PGSIZE * i < buffer + length - 1)
+  {
+    exit_on_invalid_ptr (buffer + PGSIZE * i); 
+    i++; 
+  }
+  exit_on_invalid_ptr (buffer + length - 1);
+
+  lock_acquire (&filesys_lock);
+
   /* If we're reading from STDIN */
   if (fd == STDIN_FILENO)
     {
@@ -280,6 +295,7 @@ sys_read (int fd, void *buffer, unsigned length)
           *currentChar = readChar;
           bytesRead++;
         }
+    lock_release (&filesys_lock);
     return bytesRead;
   }
   
@@ -290,30 +306,34 @@ sys_read (int fd, void *buffer, unsigned length)
 
       if (f_d == NULL)
         {
+          lock_release (&filesys_lock);
           return -1;
         }
       else
         {
-          return file_read (f_d->file, buffer, length); 
+          int bytes_read = file_read (f_d->file, buffer, length);
+          lock_release (&filesys_lock);
+          return bytes_read; 
         }
     }
 }
 
 
-/*
-Writes size bytes from buffer to the open file fd. Returns the number of bytes actually
-written, which may be less than size if some bytes could not be written.
-Writing past end-of-file would normally extend the file, but file growth is not implemented
-by the basic file system. The expected behavior is to write as many bytes as possible up to
-end-of-file and return the actual number written, or 0 if no bytes could be written at all.
-Fd 1 writes to the console. Your code to write to the console should write all of buffer in
-one call to putbuf(), at least as long as size is not bigger than a few hundred bytes. (It is
-reasonable to break up larger buffers.) Otherwise, lines of text output by different processes
-may end up interleaved on the console, confusing both human readers and our grading scripts.
-*/
 static int 
 sys_write (int fd, const void *buffer, unsigned length)
 {
+
+  int i = 1;
+
+  while ( buffer + PGSIZE * i < buffer + length - 1)
+  {
+    exit_on_invalid_ptr (buffer + PGSIZE * i); 
+    i++; 
+  }
+  exit_on_invalid_ptr (buffer + length - 1);
+
+  lock_acquire (&filesys_lock);
+
   /* --- --- --- --- --- --- ---*
    * Write to console           *
    * --- --- --- --- --- --- ---*/
@@ -347,6 +367,7 @@ sys_write (int fd, const void *buffer, unsigned length)
         }
       
       /* Will write the length specified */
+      lock_release (&filesys_lock);
       return length;
     }
 
@@ -360,13 +381,16 @@ sys_write (int fd, const void *buffer, unsigned length)
       /* No bytes could be written since file doesn't exist */
       if (f_d == NULL)
         {
+          lock_release (&filesys_lock);
           return 0;
         }
 
       /* File does exist */
       else
         {
-          return file_write (f_d->file, buffer, length);
+          int bytes_written = file_write (f_d->file, buffer, length);
+          lock_release (&filesys_lock);
+          return bytes_written;
         }
      
     }
@@ -376,8 +400,10 @@ sys_write (int fd, const void *buffer, unsigned length)
 static void 
 sys_seek (int fd, unsigned position)
 {
+  lock_acquire (&filesys_lock);
   struct file_descriptor *f_d = get_thread_file (fd);
   file_seek (f_d->file, position);
+  lock_release (&filesys_lock);
 }
 
 
@@ -385,14 +411,18 @@ sys_seek (int fd, unsigned position)
 static unsigned 
 sys_tell (int fd)
 {
+  lock_acquire (&filesys_lock);
   struct file_descriptor *f_d = get_thread_file (fd);
-  return file_tell (f_d->file);
+  unsigned tell = file_tell (f_d->file);
+  lock_release (&filesys_lock);
+  return tell;
 }
 
 
 static void 
 sys_close (int fd)
 {
+  lock_acquire (&filesys_lock);
   struct file_descriptor *f_d = get_thread_file (fd);
 
   if (f_d != NULL)
@@ -401,6 +431,7 @@ sys_close (int fd)
       file_close (f_d->file);
       free (f_d);
     }
+  lock_release (&filesys_lock);
 }
 
 static struct file_descriptor* 
