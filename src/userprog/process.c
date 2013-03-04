@@ -220,7 +220,6 @@ int
 process_wait (tid_t child_tid) 
 {
   
-  // consider adding lock
   struct thread *parent = thread_current ();
 
   /* Fail when child_tid is not a direct child. */
@@ -236,8 +235,7 @@ process_wait (tid_t child_tid)
   child->waited_already = true;
   
   /* If the child is still alive, parent waits for it to terminate. */
-  if (child->alive)
-    sema_down (&child->death_note_sema);
+  sema_down (&child->death_note_sema);
   
   ASSERT (!child->alive);
   
