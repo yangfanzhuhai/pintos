@@ -9,6 +9,7 @@
 #include "devices/input.h"
 #include "threads/malloc.h"
 #include "devices/shutdown.h"
+#include "threads/synch.h"
 
 
 #define SYS_IO_STDOUT_BUFFER_SIZE 256
@@ -35,10 +36,14 @@ static void syscall_handler (struct intr_frame *);
 static bool check_ptr_valid (const void *ptr);
 static void exit_on_invalid_ptr (const void *ptr);
 
+struct lock filesys_lock;
+
 void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+
+  lock_init (filesys_lock);
 }
 
 static void
@@ -107,7 +112,6 @@ syscall_handler (struct intr_frame *f)
 static bool 
 check_ptr_valid (const void *ptr)
 {
-  //Maybe change for static uint32_t *active_pd (void) in pagedir.c
   uint32_t *pd = thread_current()->pagedir;
 
   return ptr != NULL && is_user_vaddr (ptr) &&  
@@ -118,7 +122,9 @@ static void
 exit_on_invalid_ptr (const void *ptr)
 {
   if (!check_ptr_valid (ptr))
-    thread_exit ();
+    {
+      thread_exit ();
+    }
 }
 
 static void sys_halt (void)
@@ -166,7 +172,10 @@ sys_wait (pid_t pid)
 static bool 
 sys_create (const char *file, unsigned initial_size)
 {
-  return filesys_create (file, initial_size);
+  lock_aquire (filesys_lock);
+  bool return_val = filesys_create (file, initial_size);
+  lock_release (filesys_lock);
+  return return_val;
 }
 
 /* Deletes the file called file. Returns true if successful, false otherwise. 
@@ -181,7 +190,10 @@ sys_create (const char *file, unsigned initial_size)
 static bool 
 sys_remove (const char *file)
 {
-  return filesys_remove (file);
+  lock_aquire (filesys_lock);
+  bool return_val filesys_remove (file);
+  lock_release (filesys_lock);
+  return return_val;
 }
 
 
@@ -189,19 +201,21 @@ sys_remove (const char *file)
 static int 
 sys_open (const char *fileName)
 {
+  lock_aquire (filesys_lock);
   struct file* f = filesys_open (fileName);
+  lock_release (filesys_lock);
 
   /* File doesn't exist */
   if (f == NULL)
-  {
-    return -1;
-  }
+    {
+      return -1;
+    }
 
   /* Max file open limit reached */
   if (list_size (&thread_current()->open_files) >= SYS_IO_MAX_FILES)
-  {
-    return -1;
-  }
+    {
+      return -1;
+    }
   
   return (thread_open_file (thread_current(), f))->fd;  
 }
@@ -231,13 +245,13 @@ sys_filesize (int fd)
 
   // fd not found -> file contains nothing
   if (f_d == NULL)
-  {
-    return -1;
-  }
+    {
+      return -1;
+    }
   else
-  {
-    return file_length (f_d->file);
-  }
+    {
+      return file_length (f_d->file);
+    }
 }
 
 
@@ -248,41 +262,41 @@ sys_read (int fd, void *buffer, unsigned length)
 {
   /* If we're reading from STDIN */
   if (fd == STDIN_FILENO)
-  {
-    int bytesRead = 0;
-
-    /* Read up to "length" bytes from keyboard */
-    while (bytesRead < (int)length)
     {
-      char readChar = input_getc();
-      char* currentChar = (char*)buffer + bytesRead; 
+      int bytesRead = 0;
 
-      /* Terminate input if user presses enter */
-      if (readChar == '\n')
-      {
-        *currentChar = '\0';
-        break;
-      }
-      *currentChar = readChar;
-      bytesRead++;
-    }
+      /* Read up to "length" bytes from keyboard */
+      while (bytesRead < (int)length)
+        {
+          char readChar = input_getc();
+          char* currentChar = (char*)buffer + bytesRead; 
+
+          /* Terminate input if user presses enter */
+          if (readChar == '\n')
+            {
+              *currentChar = '\0';
+              break;
+            }
+          *currentChar = readChar;
+          bytesRead++;
+        }
     return bytesRead;
   }
   
   /* Reading from normal file */
   else
-  {
-    struct file_descriptor *f_d = get_thread_file (fd);
+    {
+      struct file_descriptor *f_d = get_thread_file (fd);
 
-    if (f_d == NULL)
-    {
-      return -1;
+      if (f_d == NULL)
+        {
+          return -1;
+        }
+      else
+        {
+          return file_read (f_d->file, buffer, length); 
+        }
     }
-    else
-    {
-      return file_read (f_d->file, buffer, length); 
-    }
-  }
 }
 
 
@@ -304,58 +318,58 @@ sys_write (int fd, const void *buffer, unsigned length)
    * Write to console           *
    * --- --- --- --- --- --- ---*/
   if (fd == STDOUT_FILENO)
-  {
-    /* Split buffer into sub buffers */
-    if (SYS_IO_STDOUT_BUFFER_ENABLED)
-    { 
-      int i;
-      int wholeBufferCount = length / SYS_IO_STDOUT_BUFFER_SIZE;
-      int incompleteBufferLength = length % SYS_IO_STDOUT_BUFFER_SIZE;
-      
-      /* Write whole sub buffers */
-      for (i = 0; i < wholeBufferCount; i++)
-      {
-        int bufferOffset = i * SYS_IO_STDOUT_BUFFER_SIZE;
-        putbuf (buffer + bufferOffset, SYS_IO_STDOUT_BUFFER_SIZE);
-      }
-
-      /* Incomplete sub buffer to write */
-      if (incompleteBufferLength != 0)
-      {
-        int bufferOffset = wholeBufferCount * SYS_IO_STDOUT_BUFFER_SIZE;
-        putbuf (buffer + bufferOffset, incompleteBufferLength);
-      }
-    }
-    /* Push entire buffer as single block */
-    else
     {
-      putbuf (buffer, length);
+      /* Split buffer into sub buffers */
+      if (SYS_IO_STDOUT_BUFFER_ENABLED)
+        { 
+          int i;
+          int wholeBufferCount = length / SYS_IO_STDOUT_BUFFER_SIZE;
+          int incompleteBufferLength = length % SYS_IO_STDOUT_BUFFER_SIZE;
+          
+          /* Write whole sub buffers */
+          for (i = 0; i < wholeBufferCount; i++)
+            {
+              int bufferOffset = i * SYS_IO_STDOUT_BUFFER_SIZE;
+              putbuf (buffer + bufferOffset, SYS_IO_STDOUT_BUFFER_SIZE);
+            }
+
+          /* Incomplete sub buffer to write */
+          if (incompleteBufferLength != 0)
+            {
+              int bufferOffset = wholeBufferCount * SYS_IO_STDOUT_BUFFER_SIZE;
+              putbuf (buffer + bufferOffset, incompleteBufferLength);
+            }
+        }
+      /* Push entire buffer as single block */
+      else
+        {
+          putbuf (buffer, length);
+        }
+      
+      /* Will write the length specified */
+      return length;
     }
-    
-    /* Will write the length specified */
-    return length;
-  }
 
   /* --- --- --- --- --- --- ---*
    * Write to file              *
    * --- --- --- --- --- --- ---*/
   else
-  {
-    struct file_descriptor *f_d = get_thread_file (fd);
-
-    /* No bytes could be written since file doesn't exist */
-    if (f_d == NULL)
     {
-      return 0;
-    }
+      struct file_descriptor *f_d = get_thread_file (fd);
 
-    /* File does exist */
-    else
-    {
-      return file_write (f_d->file, buffer, length);
+      /* No bytes could be written since file doesn't exist */
+      if (f_d == NULL)
+        {
+          return 0;
+        }
+
+      /* File does exist */
+      else
+        {
+          return file_write (f_d->file, buffer, length);
+        }
+     
     }
-   
-  }
 }
 
 /* Seek the file to the given position */
@@ -382,11 +396,11 @@ sys_close (int fd)
   struct file_descriptor *f_d = get_thread_file (fd);
 
   if (f_d != NULL)
-  {
-    list_remove (&f_d->elem);
-    file_close (f_d->file);
-    free (f_d);
-  }
+    {
+      list_remove (&f_d->elem);
+      file_close (f_d->file);
+      free (f_d);
+    }
 }
 
 static struct file_descriptor* 
@@ -404,9 +418,9 @@ get_thread_file (int fd)
         elem);
 
       if (f_d->fd == fd)
-      {
-        return f_d;
-      }
+        {
+          return f_d;
+        }
     }
 
   /* Not found */
