@@ -253,16 +253,15 @@ process_exit (void)
   
   /* Close all files that this thread has open */
   while (!list_empty (&cur->open_files))
-  {
-    struct list_elem *e = list_pop_front (&cur->open_files);
-  
-    struct file_descriptor *f_d = list_entry (e, struct file_descriptor,
-        elem);
+    {
+      struct list_elem *e = list_pop_front (&cur->open_files);
 
-    file_close (f_d->file);
+      struct file_descriptor *f_d = list_entry (e, struct file_descriptor, elem);
 
-    free(f_d);
-  }
+      file_close (f_d->file);
+
+      free(f_d);
+    }
   
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
