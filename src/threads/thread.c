@@ -321,7 +321,7 @@ thread_exit (void)
       if (c->alive)
         {
           struct thread *child = get_thread_by_tid (tid); 
-          ASSERT (c != NULL);
+          ASSERT (child != NULL);
           child->parent = NULL; 
         }
       free (c);
