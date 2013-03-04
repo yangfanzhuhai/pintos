@@ -43,7 +43,7 @@ syscall_init (void)
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 
-  lock_init (filesys_lock);
+  lock_init (&filesys_lock);
 }
 
 static void
@@ -172,9 +172,9 @@ sys_wait (pid_t pid)
 static bool 
 sys_create (const char *file, unsigned initial_size)
 {
-  lock_aquire (filesys_lock);
+  lock_acquire (&filesys_lock);
   bool return_val = filesys_create (file, initial_size);
-  lock_release (filesys_lock);
+  lock_release (&filesys_lock);
   return return_val;
 }
 
@@ -190,9 +190,9 @@ sys_create (const char *file, unsigned initial_size)
 static bool 
 sys_remove (const char *file)
 {
-  lock_aquire (filesys_lock);
-  bool return_val filesys_remove (file);
-  lock_release (filesys_lock);
+  lock_acquire (&filesys_lock);
+  bool return_val = filesys_remove (file);
+  lock_release (&filesys_lock);
   return return_val;
 }
 
@@ -201,9 +201,9 @@ sys_remove (const char *file)
 static int 
 sys_open (const char *fileName)
 {
-  lock_aquire (filesys_lock);
+  lock_acquire (&filesys_lock);
   struct file* f = filesys_open (fileName);
-  lock_release (filesys_lock);
+  lock_release (&filesys_lock);
 
   /* File doesn't exist */
   if (f == NULL)
