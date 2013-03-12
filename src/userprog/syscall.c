@@ -13,7 +13,7 @@
 
 
 #define SYS_IO_STDOUT_BUFFER_SIZE 256
-#define SYS_IO_STDOUT_BUFFER_ENABLED false
+#define SYS_IO_STDOUT_BUFFER_ENABLED true
 
 /* Sys handler prototypes */
 static void sys_halt (void);
@@ -172,9 +172,9 @@ sys_wait (pid_t pid)
 static bool 
 sys_create (const char *file, unsigned initial_size)
 {
-  //lock_acquire (&filesys_lock);
+  lock_acquire (&filesys_lock);
   bool return_val = filesys_create (file, initial_size);
-  //lock_release (&filesys_lock);
+  lock_release (&filesys_lock);
   return return_val;
 }
 
@@ -190,9 +190,9 @@ sys_create (const char *file, unsigned initial_size)
 static bool 
 sys_remove (const char *file)
 {
-  //lock_acquire (&filesys_lock);
+  lock_acquire (&filesys_lock);
   bool return_val = filesys_remove (file);
-  //lock_release (&filesys_lock);
+  lock_release (&filesys_lock);
   return return_val;
 }
 
@@ -201,9 +201,9 @@ sys_remove (const char *file)
 static int 
 sys_open (const char *fileName)
 {
-  //lock_acquire (&filesys_lock);
+  lock_acquire (&filesys_lock);
   struct file* f = filesys_open (fileName);
-  //lock_release (&filesys_lock);
+  lock_release (&filesys_lock);
 
   /* File doesn't exist */
   if (f == NULL)
@@ -241,20 +241,19 @@ thread_open_file (struct thread *t, struct file *f)
 static int 
 sys_filesize (int fd)
 {
-  //lock_acquire (&filesys_lock);
+  lock_acquire (&filesys_lock);
   struct file_descriptor *f_d = get_thread_file (fd);
 
   // fd not found -> file contains nothing
   if (f_d == NULL)
     {
-      //lock_release (&filesys_lock);
+      lock_release (&filesys_lock);
       return -1;
     }
   else
     {
-      int size = file_length (f_d->file);
-      //lock_release (&filesys_lock);
-      return size;
+      lock_release (&filesys_lock);
+      return file_length (f_d->file);
     }
 }
 
@@ -265,11 +264,18 @@ static int
 sys_read (int fd, void *buffer, unsigned length)
 {
 
-  //lock_acquire (&filesys_lock);
+  int i = 1;
 
-  /* --- --- --- --- --- --- ---*
-   * Read from stdin            *
-   * --- --- --- --- --- --- ---*/
+  while ( buffer + PGSIZE * i < buffer + length - 1)
+  {
+    exit_on_invalid_ptr (buffer + PGSIZE * i); 
+    i++; 
+  }
+  exit_on_invalid_ptr (buffer + length - 1);
+
+  lock_acquire (&filesys_lock);
+
+  /* If we're reading from STDIN */
   if (fd == STDIN_FILENO)
     {
       int bytesRead = 0;
@@ -289,146 +295,115 @@ sys_read (int fd, void *buffer, unsigned length)
           *currentChar = readChar;
           bytesRead++;
         }
-
-    //lock_release (&filesys_lock);
+    lock_release (&filesys_lock);
     return bytesRead;
   }
   
-  /* --- --- --- --- --- --- ---*
-   * Read from file             *
-   * --- --- --- --- --- --- ---*/
+  /* Reading from normal file */
   else
     {
       struct file_descriptor *f_d = get_thread_file (fd);
 
       if (f_d == NULL)
         {
-          //lock_release (&filesys_lock);
+          lock_release (&filesys_lock);
           return -1;
         }
       else
         {
           int bytes_read = file_read (f_d->file, buffer, length);
-          //lock_release (&filesys_lock);
-          return bytes_read;
+          lock_release (&filesys_lock);
+          return bytes_read; 
         }
     }
-
 }
 
 
-/*
-Writes size bytes from buffer to the open file fd. Returns the number of bytes actually
-written, which may be less than size if some bytes could not be written.
-Writing past end-of-file would normally extend the file, but file growth is not implemented
-by the basic file system. The expected behavior is to write as many bytes as possible up to
-end-of-file and return the actual number written, or 0 if no bytes could be written at all.
-Fd 1 writes to the console. Your code to write to the console should write all of buffer in
-one call to putbuf(), at least as long as size is not bigger than a few hundred bytes. (It is
-reasonable to break up larger buffers.) Otherwise, lines of text output by different processes
-may end up interleaved on the console, confusing both human readers and our grading scripts.
-*/
 static int 
 sys_write (int fd, const void *buffer, unsigned length)
 {
 
-   struct file_descriptor *f_d = NULL;
+  int i = 1;
+
+  while ( buffer + PGSIZE * i < buffer + length - 1)
+  {
+    exit_on_invalid_ptr (buffer + PGSIZE * i); 
+    i++; 
+  }
+  exit_on_invalid_ptr (buffer + length - 1);
+
+  lock_acquire (&filesys_lock);
 
   /* --- --- --- --- --- --- ---*
-   * Validate buffer            *
+   * Write to console           *
    * --- --- --- --- --- --- ---*/
-  exit_on_invalid_ptr (buffer + length - 1) ;
-
-  /* --- --- --- --- --- --- ---*
-   * Multi buffer write         *
-   * --- --- --- --- --- --- ---*/
-  //if (SYS_IO_STDOUT_BUFFER_ENABLED)
-  //  {
-  //    int i;
-  //    int wholeBufferCount = length / SYS_IO_STDOUT_BUFFER_SIZE;
-  //    int incompleteBufferLength = length % SYS_IO_STDOUT_BUFFER_SIZE;
-  //    
-  //    int bytes_written = 0;
-  //
-  //    lock_acquire (&filesys_lock);
-  //
-  //    /* Write whole sub buffers */
-  //    for (i = 0; i < wholeBufferCount; i++)
-  //      {
-  //        int buffer_offset = i * SYS_IO_STDOUT_BUFFER_SIZE;
-  //        const void *buffer_position = buffer + buffer_offset;
-  //
-  //        if (fd == STDOUT_FILENO)
-  //          {
-  //            putbuf (buffer_position, SYS_IO_STDOUT_BUFFER_SIZE);
-  //            bytes_written += SYS_IO_STDOUT_BUFFER_SIZE;
-  //          }
-  //        else
-  //          {
-  //            bytes_written += file_write (f_d->file, buffer_position,
-  //                SYS_IO_STDOUT_BUFFER_SIZE);
-  //          }
-  //      }
-
-      /* Incomplete sub buffer to write */
-  //    if (incompleteBufferLength != 0)
-  //      {
-  //        int buffer_offset = wholeBufferCount * SYS_IO_STDOUT_BUFFER_SIZE;
-  /*   
-       const void *buffer_position = buffer + buffer_offset;
-
-          if (fd == STDOUT_FILENO)
+  if (fd == STDOUT_FILENO)
+    {
+      /* Split buffer into sub buffers */
+      if (SYS_IO_STDOUT_BUFFER_ENABLED)
+        { 
+          int i;
+          int wholeBufferCount = length / SYS_IO_STDOUT_BUFFER_SIZE;
+          int incompleteBufferLength = length % SYS_IO_STDOUT_BUFFER_SIZE;
+          
+          /* Write whole sub buffers */
+          for (i = 0; i < wholeBufferCount; i++)
             {
-              putbuf (buffer_position, incompleteBufferLength);
-              bytes_written += incompleteBufferLength;
+              int bufferOffset = i * SYS_IO_STDOUT_BUFFER_SIZE;
+              putbuf (buffer + bufferOffset, SYS_IO_STDOUT_BUFFER_SIZE);
             }
-          else
+
+          /* Incomplete sub buffer to write */
+          if (incompleteBufferLength != 0)
             {
-              bytes_written += file_write (f_d->file, buffer_position,
-                  incompleteBufferLength);
+              int bufferOffset = wholeBufferCount * SYS_IO_STDOUT_BUFFER_SIZE;
+              putbuf (buffer + bufferOffset, incompleteBufferLength);
             }
         }
-
-      lock_release (&filesys_lock);
-      return bytes_written;
-    }
-  */
-
-  /* --- --- --- --- --- --- ---*
-   * Single buffer write        *
-   * --- --- --- --- --- --- ---*/
-  //else
-  //  {
-      /* Write to stdout */
-      if (fd == STDOUT_FILENO)
-        {
-          //lock_acquire (&filesys_lock);
-          putbuf (buffer, length);
-          //lock_release (&filesys_lock);
-          return length;
-        }
-
-      /* Write to file */
+      /* Push entire buffer as single block */
       else
         {
-          //lock_acquire (&filesys_lock);
-          struct file_descriptor *f_d = get_thread_file (fd);
+          putbuf (buffer, length);
+        }
+      
+      /* Will write the length specified */
+      lock_release (&filesys_lock);
+      return length;
+    }
+
+  /* --- --- --- --- --- --- ---*
+   * Write to file              *
+   * --- --- --- --- --- --- ---*/
+  else
+    {
+      struct file_descriptor *f_d = get_thread_file (fd);
+
+      /* No bytes could be written since file doesn't exist */
+      if (f_d == NULL)
+        {
+          lock_release (&filesys_lock);
+          return 0;
+        }
+
+      /* File does exist */
+      else
+        {
           int bytes_written = file_write (f_d->file, buffer, length);
-          //lock_release (&filesys_lock);
+          lock_release (&filesys_lock);
           return bytes_written;
         }
-   // }
-
+     
+    }
 }
 
 /* Seek the file to the given position */
 static void 
 sys_seek (int fd, unsigned position)
 {
-  //lock_acquire (&filesys_lock);
+  lock_acquire (&filesys_lock);
   struct file_descriptor *f_d = get_thread_file (fd);
   file_seek (f_d->file, position);
-  //lock_release (&filesys_lock);
+  lock_release (&filesys_lock);
 }
 
 
@@ -436,28 +411,27 @@ sys_seek (int fd, unsigned position)
 static unsigned 
 sys_tell (int fd)
 {
-  //lock_acquire (&filesys_lock);
+  lock_acquire (&filesys_lock);
   struct file_descriptor *f_d = get_thread_file (fd);
-  unsigned tell_val = file_tell (f_d->file);
-  //lock_release (&filesys_lock);
-  return tell_val;
+  unsigned tell = file_tell (f_d->file);
+  lock_release (&filesys_lock);
+  return tell;
 }
 
 
 static void 
 sys_close (int fd)
 {
-  //lock_acquire (&filesys_lock);
+  lock_acquire (&filesys_lock);
   struct file_descriptor *f_d = get_thread_file (fd);
 
   if (f_d != NULL)
     {
       list_remove (&f_d->elem);
       file_close (f_d->file);
-      free (f_d); 
+      free (f_d);
     }
-
-  //lock_release (&filesys_lock);
+  lock_release (&filesys_lock);
 }
 
 static struct file_descriptor* 
