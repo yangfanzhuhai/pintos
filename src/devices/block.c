@@ -146,6 +146,13 @@ block_size (struct block *block)
   return block->size;
 }
 
+/* Returns the number of pages that can be stored in the given block */
+int
+block_size_pages (struct block *block)
+{
+  block_size (block) / BLOCK_SECTORS_PER_PAGE;
+}
+
 /* Returns BLOCK's name (e.g. "hda"). */
 const char *
 block_name (struct block *block)
