@@ -1,4 +1,5 @@
 #include "userprog/process.h"
+#include "vm/page.h"
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -212,10 +213,7 @@ start_process (void *file_name_)
    exception), returns -1.  If TID is invalid or if it was not a
    child of the calling process, or if process_wait() has already
    been successfully called for the given TID, returns -1
-   immediately, without waiting.
-
-   This function will be implemented in problem 2-2.  For now, it
-   does nothing. */
+   immediately, without waiting.*/
 int
 process_wait (tid_t child_tid) 
 {
@@ -530,20 +528,28 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
   return true;
 }
 
-/* Loads a segment starting at offset OFS in FILE at address
-   UPAGE.  In total, READ_BYTES + ZERO_BYTES bytes of virtual
-   memory are initialized, as follows:
+/* Creates a supplemental page table entry at address UPAGE 
+   for each file segment starting at offset OFS in FILE.
+ 
+   The offsets in FILE for each segment, page_read_bytes and 
+   writable are recorded in the supplemental page table entry
+   with the page_location_option set to FILESYS.
+ 
+   If the page_zero_bytes is equal to PGSIZE, the 
+   page_location_option for that supplemental page table is 
+   set to ALLZERO.
+ 
+   Each UPAGE is recorded in the pagedir. But it maps to NULL and 
+   will trigger page fault later. The page fault handler will 
+   look up the UPAGE address in the supplemental page table and 
+   load the page from the recorded FILE segment. 
 
-        - READ_BYTES bytes at UPAGE must be read from FILE
-          starting at offset OFS.
-
-        - ZERO_BYTES bytes at UPAGE + READ_BYTES must be zeroed.
-
-   The pages initialized by this function must be writable by the
-   user process if WRITABLE is true, read-only otherwise.
-
-   Return true if successful, false if a memory allocation error
-   or disk read error occurs. */
+   In total, (READ_BYTES + ZERO_BYTES bytes) / PGSIZE of  
+   supplemental page table entries are created and inserted. 
+ 
+   Return true if successful, false if a memory allocation error 
+   occurs.
+*/
 static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
               uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
@@ -561,25 +567,36 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
-        return false;
-
-      /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
       /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable)) 
-        {
-          palloc_free_page (kpage);
+      if (!install_page (upage, NULL, writable))
           return false; 
+
+      /* Get a new supplemental page table entry. */
+      struct *page = malloc (sizeof struct page);
+      if (page == NULL)
+        {
+          struct thread *t = thread_current ();
+          pagedir_clear_page (t->pagedir, upage)
+          return false;
         }
+        
+      /* Records the current segment for lazy-loading. */
+      page->addr = upage;
+      if (page_zero_bytes == PGSIZE)
+        page->page_location_option = ALLZERO;
+      else
+        {
+          ofs += page_read_bytes;
+          page->page_location_option = FILESYS;
+          page->file = file;
+          page->ofs = ofs;
+          page->page_read_bytes = page_read_bytes;
+          page->writable = writable;
+        }
+
+      /* Inserts the supplemental page table entry to the supplemental
+         page table. */
+      page_insert (&page->hash_elem);
 
       /* Advance. */
       read_bytes -= page_read_bytes;

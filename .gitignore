@@ -1,3 +1,4 @@
 *.c~
 *.h~
+.DS_Store
 src/examples/*.o
