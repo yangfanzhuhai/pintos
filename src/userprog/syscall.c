@@ -7,14 +7,13 @@
 #include "lib/user/syscall.h"
 #include "userprog/pagedir.h"
 #include "devices/input.h"
-#include "filesys/file.h"
-#include "filesys/filesys.h"
 #include "threads/malloc.h"
 #include "devices/shutdown.h"
+#include "threads/synch.h"
 
 
 #define SYS_IO_STDOUT_BUFFER_SIZE 256
-#define SYS_IO_STDOUT_BUFFER_ENABLED false
+#define SYS_IO_STDOUT_BUFFER_ENABLED true
 
 /* Sys handler prototypes */
 static void sys_halt (void);
@@ -30,6 +29,8 @@ static int sys_write (int fd, const void *buffer, unsigned length);
 static void sys_seek (int fd, unsigned position);
 static unsigned sys_tell (int fd);
 static void sys_close (int fd);
+static mapid_t sys_mmap (int fd, void *addr);
+static void sys_munmap (mapid_t);
 
 static struct file_descriptor* get_thread_file (int fd);
 
@@ -37,10 +38,14 @@ static void syscall_handler (struct intr_frame *);
 static bool check_ptr_valid (const void *ptr);
 static void exit_on_invalid_ptr (const void *ptr);
 
+struct lock filesys_lock;
+
 void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+
+  lock_init (&filesys_lock);
 }
 
 static void
@@ -101,6 +106,12 @@ syscall_handler (struct intr_frame *f)
     case SYS_CLOSE:
       sys_close (*(esp + 1));
       break;
+    case SYS_MMAP:
+      f->eax = sys_mmap (*(esp + 1), (void *) *(esp + 2));
+      break;
+    case SYS_MUNMAP:
+      sys_munmap (*(esp + 1));
+      break;
     default:
       break; 
   }
@@ -109,7 +120,6 @@ syscall_handler (struct intr_frame *f)
 static bool 
 check_ptr_valid (const void *ptr)
 {
-  //Maybe change for static uint32_t *active_pd (void) in pagedir.c
   uint32_t *pd = thread_current()->pagedir;
 
   return ptr != NULL && is_user_vaddr (ptr) &&  
@@ -120,7 +130,9 @@ static void
 exit_on_invalid_ptr (const void *ptr)
 {
   if (!check_ptr_valid (ptr))
-    thread_exit ();
+    {
+      thread_exit ();
+    }
 }
 
 static void sys_halt (void)
@@ -131,19 +143,6 @@ static void sys_halt (void)
 static void sys_exit (int status)
 {
   struct thread *cur = thread_current ();
-  
-  /* Close all files that this thread has open */
-  while (!list_empty (&cur->open_files))
-  {
-    struct list_elem *e = list_pop_front (&cur->open_files);
-  
-    struct file_descriptor *f_d = list_entry (e, struct file_descriptor,
-        elem);
-
-    file_close (f_d->file);
-
-    free(f_d);
-  }
   
   /* Update the child status struct in the parent's children list. */
   if (cur->parent != NULL)
@@ -181,7 +180,10 @@ sys_wait (pid_t pid)
 static bool 
 sys_create (const char *file, unsigned initial_size)
 {
-  return filesys_create (file, initial_size);
+  lock_acquire (&filesys_lock);
+  bool return_val = filesys_create (file, initial_size);
+  lock_release (&filesys_lock);
+  return return_val;
 }
 
 /* Deletes the file called file. Returns true if successful, false otherwise. 
@@ -196,7 +198,10 @@ sys_create (const char *file, unsigned initial_size)
 static bool 
 sys_remove (const char *file)
 {
-  return true;
+  lock_acquire (&filesys_lock);
+  bool return_val = filesys_remove (file);
+  lock_release (&filesys_lock);
+  return return_val;
 }
 
 
@@ -204,48 +209,60 @@ sys_remove (const char *file)
 static int 
 sys_open (const char *fileName)
 {
+  lock_acquire (&filesys_lock);
   struct file* f = filesys_open (fileName);
+  lock_release (&filesys_lock);
 
   /* File doesn't exist */
   if (f == NULL)
-  {
-    return -1;
-  }
+    {
+      return -1;
+    }
 
   /* Max file open limit reached */
   if (list_size (&thread_current()->open_files) >= SYS_IO_MAX_FILES)
-  {
-    return -1;
-  }
-
-  /* Create file desciptor */
-  struct file_descriptor *f_d = (struct file_descriptor*)
-    malloc (sizeof (struct file_descriptor));
-  f_d->file = f;
-  f_d->fd = thread_current()->next_fd++;
-
-  // Insert the opened file into the current thread's open file list
-  list_push_front (&thread_current()->open_files, &f_d->elem);
-
-  return f_d->fd;  
+    {
+      return -1;
+    }
+  
+  return (thread_open_file (thread_current(), f))->fd;  
 }
 
+/* Creates a file descriptor struct for the current thread based on 
+  the given file, and adds it into the open_files list. */
+struct file_descriptor *
+thread_open_file (struct thread *t, struct file *f)
+{
+  /* Create file descriptor */
+  struct file_descriptor *f_d = (struct file_descriptor*)
+  malloc (sizeof (struct file_descriptor));
+  f_d->file = f;
+  f_d->fd = t->next_fd++;
+
+  // Insert the opened file into the current thread's open file list
+  list_push_front (&t->open_files, &f_d->elem);
+  
+  return f_d;
+}
 
 
 static int 
 sys_filesize (int fd)
 {
+  lock_acquire (&filesys_lock);
   struct file_descriptor *f_d = get_thread_file (fd);
 
   // fd not found -> file contains nothing
   if (f_d == NULL)
-  {
-    return -1;
-  }
+    {
+      lock_release (&filesys_lock);
+      return -1;
+    }
   else
-  {
-    return file_length (f_d->file);
-  }
+    {
+      lock_release (&filesys_lock);
+      return file_length (f_d->file);
+    }
 }
 
 
@@ -254,124 +271,147 @@ sys_filesize (int fd)
 static int 
 sys_read (int fd, void *buffer, unsigned length)
 {
+
+  int i = 1;
+
+  while ( buffer + PGSIZE * i < buffer + length - 1)
+  {
+    exit_on_invalid_ptr (buffer + PGSIZE * i); 
+    i++; 
+  }
+  exit_on_invalid_ptr (buffer + length - 1);
+
+  lock_acquire (&filesys_lock);
+
   /* If we're reading from STDIN */
   if (fd == STDIN_FILENO)
-  {
-    int bytesRead = 0;
-
-    /* Read up to "length" bytes from keyboard */
-    while (bytesRead < (int)length)
     {
-      char readChar = input_getc();
-      char* currentChar = (char*)buffer + bytesRead; 
+      int bytesRead = 0;
 
-      /* Terminate input if user presses enter */
-      if (readChar == '\n')
-      {
-        *currentChar = '\0';
-        break;
-      }
-      *currentChar = readChar;
-      bytesRead++;
-    }
+      /* Read up to "length" bytes from keyboard */
+      while (bytesRead < (int)length)
+        {
+          char readChar = input_getc();
+          char* currentChar = (char*)buffer + bytesRead; 
+
+          /* Terminate input if user presses enter */
+          if (readChar == '\n')
+            {
+              *currentChar = '\0';
+              break;
+            }
+          *currentChar = readChar;
+          bytesRead++;
+        }
+    lock_release (&filesys_lock);
     return bytesRead;
   }
   
   /* Reading from normal file */
   else
-  {
-    struct file_descriptor *f_d = get_thread_file (fd);
+    {
+      struct file_descriptor *f_d = get_thread_file (fd);
 
-    if (f_d == NULL)
-    {
-      return -1;
+      if (f_d == NULL)
+        {
+          lock_release (&filesys_lock);
+          return -1;
+        }
+      else
+        {
+          int bytes_read = file_read (f_d->file, buffer, length);
+          lock_release (&filesys_lock);
+          return bytes_read; 
+        }
     }
-    else
-    {
-      return file_read (f_d->file, buffer, length); 
-    }
-  }
 }
 
 
-/*
-Writes size bytes from buffer to the open file fd. Returns the number of bytes actually
-written, which may be less than size if some bytes could not be written.
-Writing past end-of-file would normally extend the file, but file growth is not implemented
-by the basic file system. The expected behavior is to write as many bytes as possible up to
-end-of-file and return the actual number written, or 0 if no bytes could be written at all.
-Fd 1 writes to the console. Your code to write to the console should write all of buffer in
-one call to putbuf(), at least as long as size is not bigger than a few hundred bytes. (It is
-reasonable to break up larger buffers.) Otherwise, lines of text output by different processes
-may end up interleaved on the console, confusing both human readers and our grading scripts.
-*/
 static int 
 sys_write (int fd, const void *buffer, unsigned length)
 {
+
+  int i = 1;
+
+  while ( buffer + PGSIZE * i < buffer + length - 1)
+  {
+    exit_on_invalid_ptr (buffer + PGSIZE * i); 
+    i++; 
+  }
+  exit_on_invalid_ptr (buffer + length - 1);
+
+  lock_acquire (&filesys_lock);
+
   /* --- --- --- --- --- --- ---*
    * Write to console           *
    * --- --- --- --- --- --- ---*/
   if (fd == STDOUT_FILENO)
-  {
-    /* Split buffer into sub buffers */
-    if (SYS_IO_STDOUT_BUFFER_ENABLED)
-    { 
-      int i;
-      int wholeBufferCount = length / SYS_IO_STDOUT_BUFFER_SIZE;
-      int incompleteBufferLength = length % SYS_IO_STDOUT_BUFFER_SIZE;
-      
-      /* Write whole sub buffers */
-      for (i = 0; i < wholeBufferCount; i++)
-      {
-        int bufferOffset = i * SYS_IO_STDOUT_BUFFER_SIZE;
-        putbuf (buffer + bufferOffset, SYS_IO_STDOUT_BUFFER_SIZE);
-      }
-
-      /* Incomplete sub buffer to write */
-      if (incompleteBufferLength != 0)
-      {
-        int bufferOffset = wholeBufferCount * SYS_IO_STDOUT_BUFFER_SIZE;
-        putbuf (buffer + bufferOffset, incompleteBufferLength);
-      }
-    }
-    /* Push entire buffer as single block */
-    else
     {
-      putbuf (buffer, length);
+      /* Split buffer into sub buffers */
+      if (SYS_IO_STDOUT_BUFFER_ENABLED)
+        { 
+          int i;
+          int wholeBufferCount = length / SYS_IO_STDOUT_BUFFER_SIZE;
+          int incompleteBufferLength = length % SYS_IO_STDOUT_BUFFER_SIZE;
+          
+          /* Write whole sub buffers */
+          for (i = 0; i < wholeBufferCount; i++)
+            {
+              int bufferOffset = i * SYS_IO_STDOUT_BUFFER_SIZE;
+              putbuf (buffer + bufferOffset, SYS_IO_STDOUT_BUFFER_SIZE);
+            }
+
+          /* Incomplete sub buffer to write */
+          if (incompleteBufferLength != 0)
+            {
+              int bufferOffset = wholeBufferCount * SYS_IO_STDOUT_BUFFER_SIZE;
+              putbuf (buffer + bufferOffset, incompleteBufferLength);
+            }
+        }
+      /* Push entire buffer as single block */
+      else
+        {
+          putbuf (buffer, length);
+        }
+      
+      /* Will write the length specified */
+      lock_release (&filesys_lock);
+      return length;
     }
-    
-    /* Will write the length specified */
-    return length;
-  }
 
   /* --- --- --- --- --- --- ---*
    * Write to file              *
    * --- --- --- --- --- --- ---*/
   else
-  {
-    struct file_descriptor *f_d = get_thread_file (fd);
-
-    /* No bytes could be written since file doesn't exist */
-    if (f_d == NULL)
     {
-      return 0;
-    }
+      struct file_descriptor *f_d = get_thread_file (fd);
 
-    /* File does exist */
-    else
-    {
-      return file_write (f_d->file, buffer, length);
+      /* No bytes could be written since file doesn't exist */
+      if (f_d == NULL)
+        {
+          lock_release (&filesys_lock);
+          return 0;
+        }
+
+      /* File does exist */
+      else
+        {
+          int bytes_written = file_write (f_d->file, buffer, length);
+          lock_release (&filesys_lock);
+          return bytes_written;
+        }
+     
     }
-   
-  }
 }
 
 /* Seek the file to the given position */
 static void 
 sys_seek (int fd, unsigned position)
 {
+  lock_acquire (&filesys_lock);
   struct file_descriptor *f_d = get_thread_file (fd);
   file_seek (f_d->file, position);
+  lock_release (&filesys_lock);
 }
 
 
@@ -379,22 +419,71 @@ sys_seek (int fd, unsigned position)
 static unsigned 
 sys_tell (int fd)
 {
+  lock_acquire (&filesys_lock);
   struct file_descriptor *f_d = get_thread_file (fd);
-  return file_tell (f_d->file);
+  unsigned tell = file_tell (f_d->file);
+  lock_release (&filesys_lock);
+  return tell;
 }
 
 
 static void 
 sys_close (int fd)
 {
+  lock_acquire (&filesys_lock);
   struct file_descriptor *f_d = get_thread_file (fd);
 
   if (f_d != NULL)
+    {
+      list_remove (&f_d->elem);
+      file_close (f_d->file);
+      free (f_d);
+    }
+  lock_release (&filesys_lock);
+}
+
+static mapid_t sys_mmap (int fd, void *addr)
+{
+  /* STDIN and STDOUT are nto mappable so fails */
+  if (fd == STDIN_FILENO || fd == STDOUT_FILENO)
   {
-    list_remove (&f_d->elem);
-    file_close (f_d->file);
-    free (f_d);
+    return -1;
   }
+
+  /* Must fail is addr is 0 as pintos assumes vaddr 0 is unmapped */
+  if ((uintptr_t) addr == 0)
+  {
+    return -1;
+  }
+
+  /* File can not be mapped if addr is not page aligned. */
+  if ((uintptr_t) addr % PGSIZE != 0)
+  {
+    return -1;
+  }
+
+  /**************************************************
+  *   NEED TO CHECK IF RANGE OF PAGE MAPS OVERLAPS  *
+  **************************************************/
+
+  struct file_descriptor *f_d = get_thread_file (fd);
+
+  int file_size = file_length (f_d->file);    
+
+  /* Can not map file of length 0 */
+  if (file_size == 0)
+  {
+    return -1;
+  }
+
+  return 1;
+
+
+}
+
+static void sys_munmap (mapid_t mapid)
+{
+  
 }
 
 static struct file_descriptor* 
@@ -412,12 +501,13 @@ get_thread_file (int fd)
         elem);
 
       if (f_d->fd == fd)
-      {
-        return f_d;
-      }
+        {
+          return f_d;
+        }
     }
 
   /* Not found */
   return NULL;
 }
+
 

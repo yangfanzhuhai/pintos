@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include "devices/ide.h"
 #include "threads/malloc.h"
+#include "threads/vaddr.h"
 
 /* A block device. */
 struct block
@@ -144,6 +145,13 @@ block_sector_t
 block_size (struct block *block)
 {
   return block->size;
+}
+
+/* Returns the number of pages that can be stored in the given block */
+int
+block_size_pages (struct block *block)
+{
+  return block_size (block) / BLOCK_SECTORS_PER_PAGE;
 }
 
 /* Returns BLOCK's name (e.g. "hda"). */

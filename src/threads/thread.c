@@ -308,6 +308,14 @@ thread_exit (void)
   intr_disable ();
   
   struct thread *cur = thread_current ();
+
+  while (!list_empty (&cur->locks))
+    {
+      struct list_elem *e = list_front (&cur->locks);
+      struct lock *l = list_entry (e, struct lock, elem);
+      lock_release(l);
+    }
+
   /* Go through the list of children, set the children threads' 
     parent pointers to NULL, and frees each child status struct. */
   struct list *children;
@@ -321,7 +329,7 @@ thread_exit (void)
       if (c->alive)
         {
           struct thread *child = get_thread_by_tid (tid); 
-          ASSERT (c != NULL);
+          ASSERT (child != NULL);
           child->parent = NULL; 
         }
       free (c);
@@ -553,6 +561,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
   
+  list_init(&t->locks);
   /* Initialise the children list and the parent pointer. */
   list_init (&t->children);
   t->parent = NULL;

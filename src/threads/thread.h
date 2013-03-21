@@ -111,7 +111,7 @@ struct thread
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-    
+    struct list locks;                  /* List of locks acquired */
     struct list children;               /* List of child processes. */
     struct thread *parent;              /* Parent process. */
     int own_exit_status;                /* Its own exit status. */

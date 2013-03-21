@@ -10,6 +10,8 @@
    sizes in Pintos (yet). */
 #define BLOCK_SECTOR_SIZE 512
 
+#define BLOCK_SECTORS_PER_PAGE PGSIZE/BLOCK_SECTOR_SIZE
+
 /* Index of a block device sector.
    Good enough for devices up to 2 TB. */
 typedef uint32_t block_sector_t;
@@ -51,6 +53,7 @@ struct block *block_next (struct block *);
 
 /* Block device operations. */
 block_sector_t block_size (struct block *);
+int block_size_pages (struct block *block);
 void block_read (struct block *, block_sector_t, void *);
 void block_write (struct block *, block_sector_t, const void *);
 const char *block_name (struct block *);
