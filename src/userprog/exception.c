@@ -165,12 +165,14 @@ page_fault (struct intr_frame *f)
           user ? "user" : "kernel");
   kill (f);*/
   
-  struct page *supp_page = page_lookup (fault_addr);
+  struct thread *t = thread_current ();
+  printf("t name %s\n", t->name);
+  struct page *supp_page = page_lookup (&t->pages, fault_addr);
   
   if (supp_page != NULL)
     {
-    
-      struct thread *t = thread_current ();
+      printf("HELLO\n");
+      
       struct file *file;
       /* Get a page of memory. TODO: change to get frame. Yangfan. */
       uint8_t *kpage = palloc_get_page (PAL_USER);
@@ -206,13 +208,15 @@ page_fault (struct intr_frame *f)
         /* Add the page to the process's address space. */
         if (!install_page (fault_addr, kpage, supp_page->writable))
           {
-            palloc_free_page (kpage);
+      /*      palloc_free_page (kpage);
             printf ("Page fault at %p: %s error %s page in %s context.\n",
             fault_addr,
             not_present ? "not present" : "rights violation",
             write ? "writing" : "reading",
             user ? "user" : "kernel");
-            kill (f);
+            kill (f);*/
+            
+            PANIC ("hihi");
           }
 
     }

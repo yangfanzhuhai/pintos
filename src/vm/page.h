@@ -30,14 +30,15 @@ struct page
   /* Used when the page data is in a swap slot. */
   int swap_index;
 };
-
-struct hash * pages_init (void);
-struct page * page_create (void);
 unsigned page_hash (const struct hash_elem *p_, void *aux);
 bool page_less (const struct hash_elem *a_, const struct hash_elem *b_,
            void *aux);
-void page_insert (struct hash_elem *new);
-struct page *page_lookup (void *address);
-struct page *page_delete (void *address);
+//struct hash * pages_init (void);
+void pages_init (struct hash *pages);
+struct page * page_create (void);
+void page_insert (struct hash *pages, struct hash_elem *new);
+struct page *page_lookup (struct hash *pages, void *address);
+void page_delete (struct hash *pages, void *address);
+void pages_destroy (struct hash *pages);
 
 #endif /* vm/page.h */

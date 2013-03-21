@@ -2,26 +2,7 @@
 #include <hash.h>
 #include <debug.h>
 
-static struct hash pages;
-
-/* Initializes pages as a hash table. Panics the kernel on failure. */
-struct hash *
-pages_init (void)
-{
-  if (hash_init (&pages, page_hash, page_less, NULL))
-    return &pages;
-  else
-    PANIC ("Fail to initialize supplemental page table.");
-}
-
-struct page *
-page_create (void)
-{
-  struct page *p= malloc (sizeof (struct page));
-  if (p != NULL)
-    p->page_location_option = 0;     /* Default page location option. */
-  return p;
-}
+static void page_free (struct hash_elem *e, void *aux);
 
 /* Returns a hash value for page p. */
 unsigned
@@ -41,35 +22,91 @@ page_less (const struct hash_elem *a_, const struct hash_elem *b_,
   return a->addr < b->addr;
 }
 
+/* Initializes pages as a hash table. Panics the kernel on failure. */
+void
+pages_init (struct hash *pages)
+{
+  //struct hash *pages = malloc (sizeof (struct hash));
+  //if (pages == NULL)
+  //  PANIC ("Fail to allocate memory supplemental page table.");
+    
+  if (!hash_init (pages, page_hash, page_less, NULL))
+    PANIC ("Fail to initialize supplemental page table.");
+    
+//  return NULL;
+}
+/*
+void
+pages_init (struct hash *pages)
+{
+  //struct hash *pages = malloc (sizeof (struct hash));
+  //if (pages == NULL)
+  //  PANIC ("Fail to allocate memory supplemental page table.");
+    
+  if (!hash_init (pages, page_hash, page_less, NULL))
+    return pages;
+  else
+    PANIC ("Fail to initialize supplemental page table.");
+    
+//  return NULL;
+}*/
+
+struct page *
+page_create (void)
+{
+  struct page *p= malloc (sizeof (struct page));
+  if (p != NULL)
+    p->page_location_option = 0;     /* Default page location option. */
+  return p;
+}
+
+
 /* Inserts page new into pages. */
 void
-page_insert (struct hash_elem *new)
+page_insert (struct hash *pages, struct hash_elem *new)
 {
-  hash_insert (&pages, new);
+  hash_insert (pages, new);
 }
 
 /* Returns the page containing the given virtual address,
  or a null pointer if no such page exists. */
 struct page *
-page_lookup (void *address)
+page_lookup (struct hash *pages, void *address)
 {
   struct page p;
   struct hash_elem *e;
   p.addr = address;
-  e = hash_find (&pages, &p.hash_elem);
+  e = hash_find (pages, &p.hash_elem);
   return e != NULL ? hash_entry (e, struct page, hash_elem) : NULL;
 }
 
-/* Deletes the page containing the given virtual address,
- or a null pointer if no such page exists. */
-struct page *
-page_delete (void *address)
+/* Deletes the page containing the given virtual address. */
+void
+page_delete (struct hash *pages, void *address)
 {
   struct page p;
   struct hash_elem *e;
   p.addr = address;
-  e = hash_delete (&pages, &p.hash_elem);
-  return e != NULL ? hash_entry (e, struct page, hash_elem) : NULL;
+  e = hash_delete (pages, &p.hash_elem);
+  page_free(e, NULL);
 }
+
+/* Frees the page containing the given hash_elem. */
+static void 
+page_free (struct hash_elem *e, void *aux UNUSED)
+{
+  struct page *trash_page = e != NULL ? hash_entry (e, struct page, hash_elem) 
+                                        : NULL;
+  if (trash_page != NULL)
+    free(trash_page); 
+}
+
+/* Destroys pages and frees the memory. */
+void 
+pages_destroy (struct hash *pages)
+{
+  hash_destroy (pages, page_free);
+}
+
 
 

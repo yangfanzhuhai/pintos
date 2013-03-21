@@ -248,6 +248,8 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
   
+  pages_destroy (&cur->pages);
+  
   /* Close all files that this thread has open */
   while (!list_empty (&cur->open_files))
     {
@@ -559,6 +561,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+  struct thread *t = thread_current ();
+    printf("load_segment t name %s\n", t->name);
   //file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -568,6 +572,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
  
+      printf ("upage %d\n", *upage);
       /* Get a new supplemental page table entry. */
       struct page *new_supp_page = page_create ();
       if (new_supp_page == NULL)
@@ -588,11 +593,15 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           new_supp_page->page_read_bytes = page_read_bytes;
           ofs += page_read_bytes;
         }
-
+      
+      printf("page_location_option %d\n", new_supp_page->page_location_option);
+        
       /* Inserts the supplemental page table entry to the supplemental
          page table. */
-      page_insert (&new_supp_page->hash_elem);
-
+      page_insert (&t->pages, &new_supp_page->hash_elem);
+      
+      printf ("hash size %d\n", hash_size (&t->pages));
+      
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;

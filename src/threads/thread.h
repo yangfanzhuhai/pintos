@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include "malloc.h"
 #include "synch.h"
+#include "vm/page.h"
 
 #define SYS_IO_MAX_FILES 128
 
@@ -128,6 +129,7 @@ struct semaphore exec_wait;              /* Semaphore for waiting the
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+    struct hash pages;                 /* Supplemental Page Table. */
 #endif
 
     /* Owned by thread.c. */
