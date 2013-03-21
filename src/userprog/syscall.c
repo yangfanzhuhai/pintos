@@ -9,7 +9,9 @@
 #include "devices/input.h"
 #include "threads/malloc.h"
 #include "devices/shutdown.h"
+#include "vm/mmap.h"
 #include "threads/synch.h"
+
 
 
 #define SYS_IO_STDOUT_BUFFER_SIZE 256
@@ -31,8 +33,6 @@ static unsigned sys_tell (int fd);
 static void sys_close (int fd);
 static mapid_t sys_mmap (int fd, void *addr);
 static void sys_munmap (mapid_t);
-
-static struct file_descriptor* get_thread_file (int fd);
 
 static void syscall_handler (struct intr_frame *);
 static bool check_ptr_valid (const void *ptr);
@@ -444,49 +444,15 @@ sys_close (int fd)
 
 static mapid_t sys_mmap (int fd, void *addr)
 {
-  /* STDIN and STDOUT are nto mappable so fails */
-  if (fd == STDIN_FILENO || fd == STDOUT_FILENO)
-  {
-    return -1;
-  }
-
-  /* Must fail is addr is 0 as pintos assumes vaddr 0 is unmapped */
-  if ((uintptr_t) addr == 0)
-  {
-    return -1;
-  }
-
-  /* File can not be mapped if addr is not page aligned. */
-  if ((uintptr_t) addr % PGSIZE != 0)
-  {
-    return -1;
-  }
-
-  /**************************************************
-  *   NEED TO CHECK IF RANGE OF PAGE MAPS OVERLAPS  *
-  **************************************************/
-
-  struct file_descriptor *f_d = get_thread_file (fd);
-
-  int file_size = file_length (f_d->file);    
-
-  /* Can not map file of length 0 */
-  if (file_size == 0)
-  {
-    return -1;
-  }
-
-  return 1;
-
-
+  return mmap_add (fd, addr);
 }
 
 static void sys_munmap (mapid_t mapid)
 {
-  
+  mmap_remove (mapid);
 }
 
-static struct file_descriptor* 
+struct file_descriptor* 
 get_thread_file (int fd)
 {
   /* Iterate list of open files owned by the thread and return thread matching

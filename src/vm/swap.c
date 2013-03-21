@@ -1,5 +1,6 @@
 #include "devices/block.h"
 #include "threads/vaddr.h"
+#include "vm/swap.h"
 #include <bitmap.h>
 #include <stdbool.h>
 
