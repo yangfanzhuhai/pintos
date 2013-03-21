@@ -9,23 +9,8 @@
 
 static void free_mapping (struct hash_elem *e, void* aux UNUSED);
 
-static struct hash mappings;
 /* Lock to ensure that mapids can be allocated uniquely. */
 static struct lock mapid_lock;
-
-/* Following three functions used for hash table behaviour. */
-struct hash *
-mappings_init (void)
-{
-  lock_init(&mapid_lock);
-  struct hash *mappings = malloc (sizeof (struct hash));
-  if (mappings == NULL)
-    PANIC ("Failed to intialise mappings");
-  if (hash_init (mappings, mapping_hash, mapping_less, NULL))
-    return mappings;
-  else
-    PANIC ("Failed to intialise mappings");
-}
 
 unsigned
 mapping_hash (const struct hash_elem *m_, void *aux UNUSED)
@@ -43,6 +28,21 @@ mapping_less (const struct hash_elem *a_, const struct hash_elem *b_,
   return a->mapid < b->mapid;
 }
 
+/* Following three functions used for hash table behaviour. */
+struct hash *
+mappings_init (void)
+{
+  lock_init(&mapid_lock);
+  struct hash *mappings = malloc (sizeof (struct hash));
+  if (mappings == NULL)
+    PANIC ("Failed to intialise mappings");
+  if (hash_init (mappings, mapping_hash, mapping_less, NULL))
+    return mappings;
+  else
+    PANIC ("Failed to intialise mappings");
+    return NULL;
+}
+
 /* Generates unique mapid */
 mapid_t
 allocate_mapid ()
@@ -58,7 +58,7 @@ allocate_mapid ()
 }
 
 mapid_t 
-mmap_add (int fd, void *addr)
+mmap_add (struct hash *mappings, int fd, void *addr)
 {
   struct thread * current_thread = thread_current();
   
@@ -123,7 +123,7 @@ mmap_add (int fd, void *addr)
   m->file = file;
 
   /* Insert the element in to the mapping hash table */
-  hash_insert(&mappings, &m->hash_elem);
+  hash_insert(mappings, &m->hash_elem);
 
   /* Add each page to the supplementary page table with necessary details */  
   int bytes_read = 0;
@@ -152,13 +152,13 @@ mmap_add (int fd, void *addr)
 }
 
 void 
-mmap_remove (mapid_t mapid)
+mmap_remove (struct hash *mappings, mapid_t mapid)
 {
   /* Delete the element from the hash table and free the mapping */
   struct mapping m;
   struct hash_elem *e;
   m.mapid = mapid;
-  e = hash_delete(&mappings, &m.hash_elem);
+  e = hash_delete(mappings, &m.hash_elem);
 
   ASSERT(e != NULL);
 
@@ -166,10 +166,10 @@ mmap_remove (mapid_t mapid)
 }
 
 void
-mmap_clear (void)
+mmap_clear (struct hash *mappings)
 {
   /* Delete each element from the hash table and free their mapping*/
-  hash_clear(&mappings, &free_mapping);
+  hash_destroy(mappings, &free_mapping);
 }
 
 static void 
@@ -187,7 +187,6 @@ free_mapping(struct hash_elem *e, void *aux UNUSED)
 
   /* Close the file and free the mapping/hash element*/
   file_close (mapping->file);
-  free(e);
   free(mapping);
 }
 

@@ -4,7 +4,6 @@
 #include <stdbool.h>
 #include "filesys/file.h"
 #include "filesys/filesys.h"
-#include "process.h"
 
 /* Process identifier. */
 typedef int pid_t;

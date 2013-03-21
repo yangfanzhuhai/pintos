@@ -10,7 +10,7 @@
 #include "devices/shutdown.h"
 #include "vm/mmap.h"
 #include "threads/synch.h"
-
+#include "userprog/process.h"
 
 
 #define SYS_IO_STDOUT_BUFFER_SIZE 256
@@ -443,12 +443,14 @@ sys_close (int fd)
 
 static mapid_t sys_mmap (int fd, void *addr)
 {
-  return mmap_add (fd, addr);
+  struct thread *curr = thread_current ();
+  return mmap_add (curr->mappings, fd, addr);
 }
 
 static void sys_munmap (mapid_t mapid)
 {
-  mmap_remove (mapid);
+  struct thread *curr = thread_current ();
+  mmap_remove (curr->mappings, mapid);
 }
 
 struct file_descriptor* 

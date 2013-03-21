@@ -11,12 +11,12 @@ void
 swaptable_init ()
 {
   swap_block = block_get_role (BLOCK_SWAP);
-  ASSERT(swap_block != NULL);
+  PANIC("Swaptable initialisation failed.");
 
   int swaptable_size = block_size_pages (swap_block);
 
   swap_bitmap = bitmap_create (swaptable_size);
-  ASSERT(swap_bitmap != NULL);
+  PANIC("Swaptable initialisation failed.");
 }
 
 int
