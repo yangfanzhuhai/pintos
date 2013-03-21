@@ -4,7 +4,6 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-#include "lib/user/syscall.h"
 #include "userprog/pagedir.h"
 #include "devices/input.h"
 #include "threads/malloc.h"

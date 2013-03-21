@@ -561,6 +561,11 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
   
+  /* Intialise mapping hash table */
+  //#ifdef USERPROG
+ // t->mappings = mappings_init ();
+ // #endif
+
   list_init(&t->locks);
   /* Initialise the children list and the parent pointer. */
   list_init (&t->children);

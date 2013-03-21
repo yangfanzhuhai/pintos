@@ -258,6 +258,8 @@ process_exit (void)
 
       free(f_d);
     }
+
+  mmap_clear();
   
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
