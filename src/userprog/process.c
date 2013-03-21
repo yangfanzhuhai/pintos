@@ -1,11 +1,11 @@
 #include "userprog/process.h"
-#include "vm/page.h"
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "vm/page.h"
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
@@ -20,6 +20,7 @@
 #include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -481,7 +482,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
 /* load() helpers. */
 
-static bool install_page (void *upage, void *kpage, bool writable);
+//static bool install_page (void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -558,7 +559,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
-  file_seek (file, ofs);
+  //file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Calculate how to fill this page.
@@ -566,37 +567,31 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
          and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
-
-      /* Add the page to the process's address space. */
-      if (!install_page (upage, NULL, writable))
-          return false; 
-
+ 
       /* Get a new supplemental page table entry. */
-      struct *page = malloc (sizeof struct page);
-      if (page == NULL)
-        {
-          struct thread *t = thread_current ();
-          pagedir_clear_page (t->pagedir, upage)
-          return false;
-        }
+      struct page *new_supp_page = page_create ();
+      if (new_supp_page == NULL)
+        return false;
         
       /* Records the current segment for lazy-loading. */
-      page->addr = upage;
+      new_supp_page->addr = upage;
+      new_supp_page->writable = writable;
       if (page_zero_bytes == PGSIZE)
-        page->page_location_option = ALLZERO;
+        {
+          new_supp_page->page_location_option = ALLZERO;
+        }       
       else
         {
+          new_supp_page->page_location_option = FILESYS;
+          new_supp_page->file = file;
+          new_supp_page->ofs = ofs;
+          new_supp_page->page_read_bytes = page_read_bytes;
           ofs += page_read_bytes;
-          page->page_location_option = FILESYS;
-          page->file = file;
-          page->ofs = ofs;
-          page->page_read_bytes = page_read_bytes;
-          page->writable = writable;
         }
 
       /* Inserts the supplemental page table entry to the supplemental
          page table. */
-      page_insert (&page->hash_elem);
+      page_insert (&new_supp_page->hash_elem);
 
       /* Advance. */
       read_bytes -= page_read_bytes;
@@ -635,7 +630,7 @@ setup_stack (void **esp)
    with palloc_get_page().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
-static bool
+bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();
