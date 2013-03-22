@@ -10,7 +10,7 @@
 #include "threads/vaddr.h"
 #include <stdio.h>
 
-#define PAGE_EVICTION false
+#define PAGE_EVICTION true
 
 #define PAGE_EVICTION_ALGORITHM     0
 
