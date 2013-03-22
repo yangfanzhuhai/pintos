@@ -14,6 +14,10 @@
 #include "vm/page.h"
 #include "vm/frame.h"
 
+#define STACK_LIMIT 8388608
+#define PUSH_SIZE 4
+#define PUSHA_SIZE 32
+
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -206,8 +210,10 @@ page_fault (struct intr_frame *f)
                 PANIC ("Fail to point the page table entry for the faulting virtual address to the frame. ");
               }             
         }
-      else if (is_user_vaddr (fault_addr) && (fault_addr == f->esp - 4 ||
-                fault_addr == f->esp - 32)) 
+      else if (is_user_vaddr (fault_addr) && 
+                  //(fault_addr == f->esp - PUSH_SIZE || 
+                      fault_addr >= f->esp - PUSHA_SIZE //) 
+                  && PHYS_BASE - fault_addr < STACK_LIMIT && write) 
         {
           // Stack growth
           /* Obtain a frame for stack growth. */
