@@ -186,6 +186,11 @@ thread_create (const char *name, int priority,
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
   
+  /* Intialise mapping hash table */
+  #ifdef USERPROG
+  t->mappings = mappings_init ();
+  #endif
+
   /* Initialize the parent pointer and child status struct. */
   t->parent = thread_current ();
   child_status = init_child_status (tid);
@@ -560,11 +565,6 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-  
-  /* Intialise mapping hash table */
-  #ifdef USERPROG
-  t->mappings = mappings_init ();
-  #endif
 
   list_init(&t->locks);
   /* Initialise the children list and the parent pointer. */

@@ -75,6 +75,8 @@ mmap_add (struct hash *mappings, int fd, void *addr)
     return MAP_FAILED;
 
   struct file_descriptor *f_d = get_thread_file (fd);
+  if (f_d == NULL)
+    return MAP_FAILED;
 
   struct file *file = file_reopen(f_d->file);
 
