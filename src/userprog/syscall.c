@@ -11,7 +11,6 @@
 #include "devices/shutdown.h"
 #include "threads/synch.h"
 
-
 #define SYS_IO_STDOUT_BUFFER_SIZE 256
 #define SYS_IO_STDOUT_BUFFER_ENABLED true
 

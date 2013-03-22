@@ -1,5 +1,7 @@
 #include "vm/frame.h"
-
+#include "lib/kernel/list.h"
+#include "threads/malloc.h"
+#include "threads/palloc.h"
 #include "threads/synch.h"
 
 #define FRAME_EVICTION_ALGORITHM 0
@@ -19,11 +21,12 @@ frame_table_init (void)
 struct frame_table_entry*
 frame_evict_choose_fifo (void)
 {
-  return list_back (&frame_table);
+  struct list_elem *back = list_back (&frame_table);
+  return list_entry (back, struct frame_table_entry, elem);
 }
 
 void*
-frame_evict (void* page_address)
+frame_evict (void* uaddr UNUSED)
 {
   /* 1. Choose a frame to evict, using your page replacement algorithm.
         The "accessed" and "dirty" bits in the page table, described below, 
@@ -41,9 +44,9 @@ frame_evict (void* page_address)
   /* 2. Remove references to the frame from any page table that refers to it.
         Unless you have implemented sharing, only a single page should refer to
         a frame at any given time. */
-  lock_aquire (&frame_table_lock);
-  list_remove (&f->elem);
-  //palloc_free_page (f->page);
+  lock_acquire (&frame_table_lock);
+  //list_remove (&fte->elem);
+  //palloc_free_page (fte->page);
   lock_release (&frame_table_lock);
 
 
@@ -52,44 +55,99 @@ frame_evict (void* page_address)
   // Something to do with Luke
   // Move fte->page_address / fte->frame_address to disk / swap
 
-  /* 4. Recycle
+  /* 4. Recycle frame to hold new page */
+  
+
+  return NULL;
 }
 
 /* Given a virtual address (page) find a frame to put the page in and return 
    the physical address of the frame */
 void*
-frame_obtain (void* page_address)
+frame_obtain (enum palloc_flags flags, void* uaddr)
 {
   struct frame_table_entry* fte;
 
   /* Try and obtain frame in user memory */
-  void *frame_address = palloc_get_page (PAL_USER);
-  
-  
+  void *kaddr = palloc_get_page (flags);
 
   /* Successfully obtained frame */
-  if (frame_address != NULL)
+  if (kaddr != NULL)
     {
       /* Create new frame table entry mapping the given page to the allocated
          frame */
-      fte = (struct frame *) malloc (sizeof (struct frame));
-      fte->frame_address = frame_address;
-      fte->page_address = page_address;
-      lock_aquire (&frame_table_lock);
-      list_push_front(&frame_list, &fte->elem);
+      fte = (struct frame_table_entry *) malloc 
+                (sizeof (struct frame_table_entry));
+
+      fte->kaddr = kaddr;
+      fte->uaddr = uaddr;
+      lock_acquire (&frame_table_lock);
+      list_push_front (&frame_table, &fte->elem);
       lock_release (&frame_table_lock);
+      return fte->kaddr;
     }
 
   /* Failed to obtain frame */
   else
     {
       /* Perform eviction to release a frame and try allocation again */
-      frame_evict ();
+      return frame_evict (uaddr);
     }
-
-  
-  return f;
 }
 
 
+/* Release the frame holding the page specified by uaddr */
+void
+frame_release (void* uaddr)
+{
+  lock_acquire (&frame_table_lock);
 
+  struct frame_table_entry *fte = frame_lookup_uaddr (uaddr);
+  ASSERT (fte != NULL);
+
+  list_remove (&fte->elem);
+  palloc_free_page (&fte->uaddr);
+
+  lock_release (&frame_table_lock);
+}
+
+struct frame_table_entry*
+frame_lookup_uaddr (void* uaddr)
+{
+  struct list_elem *e;
+
+  for (e = list_begin (&frame_table);
+       e != list_end (&frame_table); 
+       e = list_next (e))
+    {
+      struct frame_table_entry *fte = 
+          list_entry (e, struct frame_table_entry, elem);
+
+      if (fte->uaddr == uaddr)
+        {
+          return fte;
+        }
+    }
+  return NULL;
+}
+
+
+struct frame_table_entry*
+frame_lookup_kaddr (void* kaddr)
+{
+  struct list_elem *e;
+
+  for (e = list_begin (&frame_table);
+       e != list_end (&frame_table); 
+       e = list_next (e))
+    {
+      struct frame_table_entry *fte =
+          list_entry (e, struct frame_table_entry, elem);
+
+      if (fte->kaddr == kaddr)
+        {
+          return fte;
+        }
+    }
+  return NULL;
+}
