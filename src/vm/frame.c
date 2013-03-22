@@ -9,7 +9,10 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
-#define FRAME_EVICTION_ALGORITHM 0
+#define PAGE_EVICTION_ALGORITHM     0
+
+#define PAGE_EVICTION_FIFO          0
+#define PAGE_EVICTION_SECONDCHANCE  1
 
 static struct lock frame_table_lock;
 static struct list frame_table;
@@ -26,8 +29,37 @@ frame_table_init (void)
 struct frame_table_entry*
 frame_evict_choose_fifo (void)
 {
+  lock_acquire (&frame_table_lock);
+
   struct list_elem *back = list_back (&frame_table);
-  return list_entry (back, struct frame_table_entry, elem);
+  struct frame_table_entry *eviction_candidate 
+    = list_entry (back, struct frame_table_entry, elem);
+
+  lock_release (&frame_table_lock);
+
+  return eviction_candidate;
+}
+
+struct frame_table_entry*
+frame_evict_choose_secondchance (void)
+{
+  struct frame_table_entry *fte = frame_evict_choose_fifo ();
+
+  if (pagedir_is_accessed (fte->owner->pagedir, fte->uaddr))
+    {
+      pagedir_set_accessed (fte->owner->pagedir, fte->uaddr, false);
+
+      lock_acquire (&frame_table_lock);
+      list_remove (&fte->elem);
+      list_push_front (&frame_table, &fte->elem);
+      lock_release (&frame_table_lock);
+
+      return frame_evict_choose_secondchance ();
+    }
+  else
+    {
+      return fte;
+    }
 }
 
 void*
@@ -44,11 +76,20 @@ frame_evict (void* uaddr)
         The "accessed" and "dirty" bits in the page table, described below, 
         will come in handy. */
   struct frame_table_entry *fte = NULL;
-  switch (FRAME_EVICTION_ALGORITHM)
+  switch (PAGE_EVICTION_ALGORITHM)
   {
     /* First in first out */
-    case 0:
+    case PAGE_EVICTION_FIFO:
       fte = frame_evict_choose_fifo ();
+      break;
+
+    /* Second chance */
+    case PAGE_EVICTION_SECONDCHANCE:
+      fte = frame_evict_choose_secondchance ();
+      break;
+
+    default:
+      PANIC ("Invalid eviction algorithm choice.");
   }
   ASSERT (fte != NULL);
 
@@ -56,8 +97,7 @@ frame_evict (void* uaddr)
   /* 2. Remove references to the frame from any page table that refers to it.
         Unless you have implemented sharing, only a single page should refer to
         a frame at any given time. */
-  struct thread* frame_owner = fte->owner;
-  pagedir_clear_page (frame_owner->pagedir, pg_round_down (fte->uaddr));
+  pagedir_clear_page (fte->owner->pagedir, pg_round_down (fte->uaddr));
 
 
   /* 3. If necessary, write the page to the file system or to swap.
