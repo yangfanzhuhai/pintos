@@ -166,24 +166,20 @@ page_fault (struct intr_frame *f)
       //printf ("fault page %d\n", (int) fault_page);
       
       struct page *supp_page = page_lookup (t->pages, fault_page);      
-      
+        
       /* If the supplemental page table contains information for supp_page, 
          load the data according to the page_location_option. 
          */
       if (supp_page != NULL)
         { 
-          struct file *file;
+          struct file *file;  
           /* Obtain a frame to store the page. */
           uint8_t *kpage = frame_obtain (PAL_USER, fault_page);
           if (kpage == NULL)
-            {
-              frame_release (kpage);
-              PANIC ("Fail to get frame for lazy-loading in page_falut_handler.");
-            }
-            
+            PANIC ("Fail to get frame for lazy-loading in page_falut_handler.");        
           switch (supp_page->page_location_option)
             {
-              /* The data that should be in this page is in the file system. */
+              /* The data that should be in this page is in the file system. */            
               case FILESYS:
                 /* Load this page with the file data recorded in the supp_page. */
                 file = supp_page->file;
@@ -210,8 +206,26 @@ page_fault (struct intr_frame *f)
                 PANIC ("Fail to point the page table entry for the faulting virtual address to the frame. ");
               }             
         }
-      else 
-        thread_exit ();
+      else if (is_user_vaddr (fault_addr) && (fault_addr == f->esp - 4 ||
+                fault_addr == f->esp - 32)) 
+        {
+          // Stack growth
+          /* Obtain a frame for stack growth. */
+          uint8_t *kpage = frame_obtain (PAL_USER, fault_page);
+          if (kpage == NULL)
+            PANIC ("Fail to get frame for lazy-loading in page_falut_handler.");        
+          
+          /* Add the page to the process's address space. */
+          if (!install_page (fault_page, kpage, true))
+            {
+              frame_release (kpage);
+              PANIC ("Fail to point the page table entry for the faulting virtual address to the frame. ");
+            }
+        }
+      else
+        {
+          thread_exit ();
+        }
     }
   else 
     {

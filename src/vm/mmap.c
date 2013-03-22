@@ -194,7 +194,7 @@ free_mapping (struct hash_elem *e, void *aux UNUSED)
   int i;
   for (i = 0; i < mapping->number_of_pages; i++)
   {
-    page_delete (t->pages, mapping->addr + i*PGSIZE);
+    //page_delete (t->pages, mapping->addr + i*PGSIZE);
   }
 
   /* Close the file and free the mapping/hash element*/

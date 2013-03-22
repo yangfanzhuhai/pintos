@@ -35,6 +35,7 @@ static void sys_munmap (mapid_t);
 static void syscall_handler (struct intr_frame *);
 static bool check_ptr_valid (const void *ptr);
 static void exit_on_invalid_ptr (const void *ptr);
+static void check_stack_growth (const void *ptr);
 
 struct lock filesys_lock;
 
@@ -46,6 +47,34 @@ syscall_init (void)
   lock_init (&filesys_lock);
 }
 
+
+static bool 
+check_ptr_valid (const void *ptr)
+{
+  return ptr != NULL && is_user_vaddr (ptr);
+}
+
+static void 
+exit_on_invalid_ptr (const void *ptr)
+{
+  if (!check_ptr_valid (ptr))
+    thread_exit ();
+
+  uint32_t *pd = thread_current()->pagedir;
+  pagedir_get_page (pd, ptr);
+}
+
+static void
+check_stack_growth (const void *ptr)
+{
+  if (!(ptr != NULL && is_user_vaddr (ptr)))
+    thread_exit ();
+  else {
+    uint32_t *pd = thread_current()->pagedir;
+    pagedir_get_page (pd, ptr);
+  }
+}
+
 static void
 syscall_handler (struct intr_frame *f) 
 {
@@ -55,7 +84,12 @@ syscall_handler (struct intr_frame *f)
   exit_on_invalid_ptr (esp + 1);
   exit_on_invalid_ptr (esp + 2);
   exit_on_invalid_ptr (esp + 3);
-
+/*  
+  check_stack_growth (esp);
+  check_stack_growth (esp + 1);
+  check_stack_growth (esp + 2);
+  check_stack_growth (esp + 3);
+*/
   uint32_t syscall_number = *esp;
   switch (syscall_number)
   {
@@ -87,7 +121,8 @@ syscall_handler (struct intr_frame *f)
     case SYS_FILESIZE:
       f->eax = sys_filesize (*(esp + 1));
       break;
-    case SYS_READ:    
+    case SYS_READ: 
+      exit_on_invalid_ptr ((void *)*(esp + 2));   
       f->eax = sys_read (*(esp + 1), (void *) *(esp + 2), *(esp + 3));
       break;
     case SYS_WRITE:
@@ -112,24 +147,6 @@ syscall_handler (struct intr_frame *f)
     default:
       break; 
   }
-}
-
-static bool 
-check_ptr_valid (const void *ptr)
-{
-  uint32_t *pd = thread_current()->pagedir;
-
-  return ptr != NULL && is_user_vaddr (ptr) &&  
-         pagedir_get_page (pd, ptr) != NULL;
-}
-
-static void 
-exit_on_invalid_ptr (const void *ptr)
-{
-  if (!check_ptr_valid (ptr))
-    {
-      thread_exit ();
-    }
 }
 
 static void sys_halt (void)

@@ -34,10 +34,6 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
-  /* Impose a limit of 4KB on the length of the command line arguments*/
-  //if (strlen (file_name) > PGSIZE) 
-  //  return -1;
-
   char *fn_copy;
   char *fn_copy1;
   char *program_name;
@@ -94,14 +90,11 @@ start_process (void *file_name_)
   int i;
   int numbytes;
   int totalbytes;
-  int stack_size;          /* Keeps track of the stack size to 
-                              avoid stack page overflow. */
   void *original_esp;
   
   memory_allocated = false;
   success = false;
   totalbytes = 0;
-  stack_size = 0;
   
   tokens = palloc_get_page (0);
   if (tokens == NULL)
@@ -142,15 +135,6 @@ start_process (void *file_name_)
       memcpy (if_.esp, tokens[i], numbytes);
       totalbytes += numbytes;
     }
-  
-  /* Calculate and check the overall stack size to 
-     avoid stack page overflow. */
-  stack_size = totalbytes; 
-  stack_size += (4 - totalbytes % 4) % 4;
-  stack_size += args_count * sizeof (char *);
-  stack_size += sizeof (char **) + sizeof (int) + 4;
-  if (stack_size > PGSIZE)
-    goto done;
   
   /* Round the stack pointer down to a multiple of 4 
     for best performance. */
@@ -193,12 +177,12 @@ start_process (void *file_name_)
   palloc_free_page (file_name);
   
   /* Inform the parent on the current process' load status. */
-  if (memory_allocated && success && stack_size < PGSIZE)
+  if (memory_allocated && success)
     thread_current ()->parent->loaded_successfully = true;
   sema_up (&thread_current ()->parent->exec_wait);
   
   /* If load failed, quit. */  
-  if (!memory_allocated || !success || stack_size > PGSIZE) 
+  if (!memory_allocated || !success) 
     thread_exit ();
 
   /* Start the user process by simulating a return from an
