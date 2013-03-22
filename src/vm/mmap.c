@@ -98,9 +98,6 @@ mmap_add (struct hash *mappings, int fd, void *addr)
   {
     int page_offset = i*PGSIZE;
   
-/*
-    if (page_lookup (addr + page_offset, current_thread) != NULL ||
-       */
     if(pagedir_get_page(current_thread->pagedir, addr + page_offset))
     {
       file_close (file);
@@ -130,10 +127,11 @@ mmap_add (struct hash *mappings, int fd, void *addr)
   /* Add each page to the supplementary page table with necessary details */  
   int bytes_read = 0;
   int bytes_zero = 0;
+  off_t ofs = 0;
   for (i = 0; i < number_of_pages; i++)
   {
-    //int page_offset = i*PGSIZE;
-  
+    int page_offset = i*PGSIZE;
+
     if (file_size >= PGSIZE)
     {
       bytes_read = PGSIZE;
@@ -144,19 +142,25 @@ mmap_add (struct hash *mappings, int fd, void *addr)
       bytes_read = file_size;
       bytes_zero = PGSIZE - bytes_read;
     }
-    /*
+    
     struct page *p = page_create ();
     if (p == NULL)
       {
         file_close (file);
         return MAP_FAILED;
       }
+    
     p->addr = addr + page_offset;
     p->page_location_option = FILESYS;
-    p-> */
-    //page_add (addr + page_offset, bytes_read, bytes_zero, mapid);
+    p->file = file;
+    p->ofs = ofs;
+    p->page_read_bytes = bytes_read;
+    p->mapid = mapid;
+     
+    page_insert (current_thread->pages, &p->hash_elem);
 
     file_size -= bytes_read;
+    ofs += bytes_read;
   }
 
   return mapid; 
@@ -194,7 +198,7 @@ free_mapping (struct hash_elem *e, void *aux UNUSED)
   int i;
   for (i = 0; i < mapping->number_of_pages; i++)
   {
-    //page_delete (t->pages, mapping->addr + i*PGSIZE);
+    page_delete (t->pages, mapping->addr + i*PGSIZE);
   }
 
   /* Close the file and free the mapping/hash element*/

@@ -22,9 +22,9 @@ swaptable_init ()
 int
 swap_to_disk (void *uvaddr)
 {
-  int index = bitmap_scan_and_flip (swap_bitmap, 0, 1, false);
+  int index = (int) bitmap_scan_and_flip (swap_bitmap, 0, 1, false);
 
-  if(index == BITMAP_ERROR)
+  if(index == (int) BITMAP_ERROR)
   {
     return -1;
   }

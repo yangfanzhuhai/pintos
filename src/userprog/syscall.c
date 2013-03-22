@@ -121,26 +121,26 @@ syscall_handler (struct intr_frame *f)
       sys_exit (*(esp + 1));
       break;
     case SYS_EXEC:
-      exit_on_invalid_ptr ((void *)*(esp + 1));
-      //check_stack_growth ((void *)*(esp + 1), f);
+      //exit_on_invalid_ptr ((void *)*(esp + 1));
+      check_stack_growth ((void *)*(esp + 1), f);
       f->eax = sys_exec ((char *) *(esp + 1));
       break;
     case SYS_WAIT:
       f->eax = sys_wait (*(esp + 1));
       break;
     case SYS_CREATE:
-      exit_on_invalid_ptr ((void *)*(esp + 1));
-      //check_stack_growth ((void *)*(esp + 1), f);
+      //exit_on_invalid_ptr ((void *)*(esp + 1));
+      check_stack_growth ((void *)*(esp + 1), f);
       f->eax = sys_create ((char *) *(esp + 1), *(esp + 2));
       break;
     case SYS_REMOVE:
-      exit_on_invalid_ptr ((void *)*(esp + 1));
-      //check_stack_growth ((void *)*(esp + 1), f);
+      //exit_on_invalid_ptr ((void *)*(esp + 1));
+      check_stack_growth ((void *)*(esp + 1), f);
       f->eax = sys_remove ((char *) *(esp + 1));
       break;
     case SYS_OPEN:
-      exit_on_invalid_ptr ((void *)*(esp + 1));
-      //check_stack_growth ((void *)*(esp + 1), f);
+      //exit_on_invalid_ptr ((void *)*(esp + 1));
+      check_stack_growth ((void *)*(esp + 1), f);
       f->eax = sys_open ((char *) *(esp + 1));
       break;
     case SYS_FILESIZE:
@@ -484,13 +484,15 @@ sys_close (int fd)
   lock_release (&filesys_lock);
 }
 
-static mapid_t sys_mmap (int fd, void *addr)
+static mapid_t 
+sys_mmap (int fd, void *addr)
 {
   struct thread *curr = thread_current ();
   return mmap_add (curr->mappings, fd, addr);
 }
 
-static void sys_munmap (mapid_t mapid)
+static void 
+sys_munmap (mapid_t mapid)
 {
   struct thread *curr = thread_current ();
   mmap_remove (curr->mappings, mapid);

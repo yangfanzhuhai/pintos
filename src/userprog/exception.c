@@ -216,11 +216,11 @@ page_fault (struct intr_frame *f)
               }             
         }
       else if (is_user_vaddr (fault_addr) && 
-                  //(fault_addr == f->esp - PUSH_SIZE || 
-                      fault_addr >= f->esp - PUSHA_SIZE //) 
-                  && PHYS_BASE - fault_addr < STACK_LIMIT && write) 
+                      //(fault_addr == f->esp - PUSH_SIZE || 
+                          fault_addr >= f->esp - PUSHA_SIZE //) 
+                      && PHYS_BASE - fault_addr < STACK_LIMIT && write) 
         {
-          // Stack growth
+          /* Stack growth */
           /* Obtain a frame for stack growth. */
           uint8_t *kpage = frame_obtain (PAL_USER, fault_page);
           if (kpage == NULL)
@@ -233,19 +233,18 @@ page_fault (struct intr_frame *f)
               PANIC ("Fail to point the page table entry for the faulting virtual address to the frame. ");
             }
         }
-      else
+      else 
         {
+          /* If the supplemental page table indicates that the user 
+            process should not expect any data at fault_addr, or if 
+            the page is not a stack growth case*/
           thread_exit ();
         }
+        
     }
   else 
     {
-   /*   printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-      kill (f);*/
+      /* Assess in an attempt to write to a read-only page. */
       thread_exit ();
     }
 }
