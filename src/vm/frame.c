@@ -77,11 +77,6 @@ frame_evict_choose_secondchance (void)
 void*
 frame_evict (void* uaddr)
 {
-  // bool pagedir_is_dirty (uint32 t *pd, const void *page )
-  // bool pagedir_is_accessed (uint32 t *pd, const void *page )
-
-  // void pagedir_set_dirty (uint32 t *pd, const void *page, bool value )
-  // void pagedir_set_accessed (uint32 t *pd, const void *page, bool value )
 
   /* 1. Choose a frame to evict, using your page replacement algorithm.
         The "accessed" and "dirty" bits in the page table, described below, 

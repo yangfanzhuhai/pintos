@@ -92,7 +92,6 @@ mmap_add (struct hash *mappings, int fd, void *addr)
   if (file_size % PGSIZE != 0)
     number_of_pages++;
 
-  //printf("Pre overlap check: No. of Pages : %d \n", number_of_pages);
   /* Check if pages overlaps with pages which are already mapped */
   int i;
   for (i = 0; i < number_of_pages; i++)
@@ -128,7 +127,6 @@ mmap_add (struct hash *mappings, int fd, void *addr)
 
   /* Add each page to the supplementary page table with necessary details */  
   int bytes_read = 0;
-  int bytes_zero = 0;
   off_t ofs = 0;
   for (i = 0; i < number_of_pages; i++)
   {
@@ -137,12 +135,10 @@ mmap_add (struct hash *mappings, int fd, void *addr)
     if (file_size >= PGSIZE)
     {
       bytes_read = PGSIZE;
-      bytes_zero = 0;
     }
     else
     {
       bytes_read = file_size;
-      bytes_zero = PGSIZE - bytes_read;
     }
     
     struct page *p = page_create ();

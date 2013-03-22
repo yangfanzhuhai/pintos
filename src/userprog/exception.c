@@ -15,10 +15,6 @@
 #include "vm/frame.h"
 #include "vm/swap.h"
 
-#define STACK_LIMIT 8388608
-#define PUSH_SIZE 4
-#define PUSHA_SIZE 32
-
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -165,10 +161,8 @@ page_fault (struct intr_frame *f)
   if (not_present)
     {
       struct thread *t = thread_current ();
-     // printf("t name %s\n", t->name);
 
       void *fault_page = pg_round_down (fault_addr);
-      //printf ("fault page %d\n", (int) fault_page);
       
       struct page *supp_page = page_lookup (t->pages, fault_page);      
         
@@ -200,7 +194,7 @@ page_fault (struct intr_frame *f)
                 break;
               
               case SWAPSLOT:
-                printf("Supp: %d\n", supp_page->swap_index);
+                //printf("Supp: %d\n", supp_page->swap_index);
                 swap_from_disk (supp_page->swap_index, kpage);
                 break;
   
@@ -217,8 +211,7 @@ page_fault (struct intr_frame *f)
               }             
         }
       else if (is_user_vaddr (fault_addr) && 
-                      //(fault_addr == f->esp - PUSH_SIZE || 
-                          fault_addr >= f->esp - PUSHA_SIZE //) 
+                   fault_addr >= f->esp - PUSHA_SIZE 
                       && PHYS_BASE - fault_addr < STACK_LIMIT && write) 
         {
           /* Stack growth */

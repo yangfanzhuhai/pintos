@@ -13,6 +13,7 @@
 #include "vm/page.h"
 #include "threads/synch.h"
 #include "userprog/process.h"
+#include "userprog/exception.h"
 
 #define SYS_IO_STDOUT_BUFFER_SIZE 256
 #define SYS_IO_STDOUT_BUFFER_ENABLED true
@@ -37,9 +38,10 @@ static void sys_munmap (mapid_t);
 static void syscall_handler (struct intr_frame *);
 static bool check_ptr_valid (const void *ptr);
 static void exit_on_invalid_ptr (const void *ptr);
-static void check_stack_growth (const void *ptr);
+static void mm_check_pointer (const void *ptr);
 
 struct lock filesys_lock;
+static struct intr_frame *frame;
 
 void
 syscall_init (void) 
@@ -66,19 +68,21 @@ exit_on_invalid_ptr (const void *ptr)
 }
 
 static void
-check_stack_growth (const void *ptr)
+mm_check_pointer (const void *ptr)
 {
   if (!(ptr != NULL && is_user_vaddr (ptr)))
     thread_exit ();
     
-  /*
-  uint32_t *pd = thread_current()->pagedir;
-  if (pagedir_get_page (pd, ptr) == NULL )
+  struct thread *t = thread_current ();
+  uint32_t *pd = t->pagedir;
+  void *fault_page = pg_round_down (ptr);
+  if (pagedir_get_page (pd, ptr) == NULL &&
+        page_lookup (t->pages, fault_page))
     {
-      if (ptr == f->esp - 4 || ptr == f->esp - 32)
+      if (ptr >= frame->esp - PUSHA_SIZE 
+                      && PHYS_BASE - ptr < STACK_LIMIT)
         {
-      // Stack growth
-        void *fault_page = pg_round_down (ptr);
+          // Stack growth
           // Obtain a frame for stack growth. 
           uint8_t *kpage = frame_obtain (PAL_USER, fault_page);
           if (kpage == NULL)
@@ -91,9 +95,7 @@ check_stack_growth (const void *ptr)
               thread_exit ();
             }
         }
-      else 
-        thread_exit ();
-    }*/
+    }
 }
 
 static void
@@ -101,16 +103,13 @@ syscall_handler (struct intr_frame *f)
 {
   uint32_t *esp = f->esp;
   
+  frame = f;
+  
   exit_on_invalid_ptr (esp);
   exit_on_invalid_ptr (esp + 1);
   exit_on_invalid_ptr (esp + 2);
   exit_on_invalid_ptr (esp + 3);
-/*  
-  check_stack_growth (esp);
-  check_stack_growth (esp + 1);
-  check_stack_growth (esp + 2);
-  check_stack_growth (esp + 3);
-*/
+
   uint32_t syscall_number = *esp;
   switch (syscall_number)
   {
@@ -121,39 +120,33 @@ syscall_handler (struct intr_frame *f)
       sys_exit (*(esp + 1));
       break;
     case SYS_EXEC:
-      //exit_on_invalid_ptr ((void *)*(esp + 1));
-      check_stack_growth ((void *)*(esp + 1));
+      mm_check_pointer ((void *)*(esp + 1));
       f->eax = sys_exec ((char *) *(esp + 1));
       break;
     case SYS_WAIT:
       f->eax = sys_wait (*(esp + 1));
       break;
     case SYS_CREATE:
-      //exit_on_invalid_ptr ((void *)*(esp + 1));
-      check_stack_growth ((void *)*(esp + 1));
+      mm_check_pointer ((void *)*(esp + 1));
       f->eax = sys_create ((char *) *(esp + 1), *(esp + 2));
       break;
     case SYS_REMOVE:
-      //exit_on_invalid_ptr ((void *)*(esp + 1));
-      check_stack_growth ((void *)*(esp + 1));
+      mm_check_pointer ((void *)*(esp + 1));
       f->eax = sys_remove ((char *) *(esp + 1));
       break;
     case SYS_OPEN:
-      //exit_on_invalid_ptr ((void *)*(esp + 1));
-      check_stack_growth ((void *)*(esp + 1));
+      mm_check_pointer ((void *)*(esp + 1));
       f->eax = sys_open ((char *) *(esp + 1));
       break;
     case SYS_FILESIZE:
       f->eax = sys_filesize (*(esp + 1));
       break;
     case SYS_READ: 
-      //exit_on_invalid_ptr ((void *)*(esp + 2)); 
-      check_stack_growth ((void *)*(esp + 2));  
+      mm_check_pointer ((void *)*(esp + 2));  
       f->eax = sys_read (*(esp + 1), (void *) *(esp + 2), *(esp + 3));
       break;
     case SYS_WRITE:
-      //exit_on_invalid_ptr ((void *)*(esp + 2));
-      check_stack_growth ((void *)*(esp + 2));
+      mm_check_pointer ((void *)*(esp + 2));
       f->eax = sys_write (*(esp + 1), (void *) *(esp + 2), *(esp + 3));
       break;
     case SYS_SEEK:
@@ -317,10 +310,10 @@ sys_read (int fd, void *buffer, unsigned length)
 
   while ( buffer + PGSIZE * i < buffer + length - 1)
   {
-    check_stack_growth (buffer + PGSIZE * i); 
+    mm_check_pointer (buffer + PGSIZE * i); 
     i++; 
   }
-  check_stack_growth (buffer + length - 1);
+  mm_check_pointer (buffer + length - 1);
 
   lock_acquire (&filesys_lock);
 
@@ -376,10 +369,10 @@ sys_write (int fd, const void *buffer, unsigned length)
 
   while ( buffer + PGSIZE * i < buffer + length - 1)
   {
-    check_stack_growth (buffer + PGSIZE * i); 
+    mm_check_pointer (buffer + PGSIZE * i); 
     i++; 
   }
-  check_stack_growth (buffer + length - 1);
+  mm_check_pointer (buffer + length - 1);
 
   lock_acquire (&filesys_lock);
 
@@ -487,14 +480,19 @@ static mapid_t
 sys_mmap (int fd, void *addr)
 {
   struct thread *curr = thread_current ();
-  return mmap_add (curr->mappings, fd, addr);
+  lock_acquire(&filesys_lock);
+  mapid_t mapid = mmap_add (curr->mappings, fd, addr);
+  lock_release(&filesys_lock);
+  return mapid;
 }
 
 static void 
 sys_munmap (mapid_t mapid)
 {
   struct thread *curr = thread_current ();
+  lock_acquire(&filesys_lock);
   mmap_remove (curr->mappings, mapid);
+  lock_release(&filesys_lock);
 }
 
 struct file_descriptor* 

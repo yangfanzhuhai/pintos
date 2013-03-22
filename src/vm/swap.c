@@ -30,11 +30,8 @@ swap_to_disk (void *uvaddr)
 
   if(index == (int) BITMAP_ERROR)
   {
-    //return -1;
     PANIC ("Swap slot is full. ");
   }
-
-  //int sector_index = index * BLOCK_SECTORS_PER_PAGE;
 
   /* Writes each sector of the block device from uvaddr. 
      block_write states 'Internally synchronizes accesses to block devices, 
@@ -51,7 +48,6 @@ swap_to_disk (void *uvaddr)
 void
 swap_from_disk (int index, void *uvaddr)
 {
-  //int sector_index = index * BLOCK_SECTORS_PER_PAGE;
   ASSERT( index >=0);
 
   printf( "Process name: %s, swap_index_from: %d \n", thread_current()->name, index);
