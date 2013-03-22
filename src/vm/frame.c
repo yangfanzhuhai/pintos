@@ -6,6 +6,7 @@
 #include "threads/palloc.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 
 #define FRAME_EVICTION_ALGORITHM 0
 
