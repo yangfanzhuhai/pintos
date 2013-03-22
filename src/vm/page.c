@@ -23,33 +23,19 @@ page_less (const struct hash_elem *a_, const struct hash_elem *b_,
 }
 
 /* Initializes pages as a hash table. Panics the kernel on failure. */
-void
-pages_init (struct hash *pages)
+struct hash *
+pages_init (void)
 {
-  //struct hash *pages = malloc (sizeof (struct hash));
-  //if (pages == NULL)
-  //  PANIC ("Fail to allocate memory supplemental page table.");
+  struct hash *pages = malloc (sizeof (struct hash));
+  if (pages == NULL)
+    PANIC ("Fail to allocate memory supplemental page table.");
     
-  if (!hash_init (pages, page_hash, page_less, NULL))
-    PANIC ("Fail to initialize supplemental page table.");
-    
-//  return NULL;
-}
-/*
-void
-pages_init (struct hash *pages)
-{
-  //struct hash *pages = malloc (sizeof (struct hash));
-  //if (pages == NULL)
-  //  PANIC ("Fail to allocate memory supplemental page table.");
-    
-  if (!hash_init (pages, page_hash, page_less, NULL))
+  if (hash_init (pages, page_hash, page_less, NULL))
     return pages;
   else
-    PANIC ("Fail to initialize supplemental page table.");
-    
-//  return NULL;
-}*/
+    PANIC ("Fail to initialize supplemental page table.");    
+  return NULL;
+}
 
 struct page *
 page_create (void)

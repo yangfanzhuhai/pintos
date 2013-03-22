@@ -251,7 +251,7 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
   
-  pages_destroy (&cur->pages);
+  pages_destroy (cur->pages);
   
   /* Close all files that this thread has open */
   while (!list_empty (&cur->open_files))
@@ -264,6 +264,8 @@ process_exit (void)
 
       free(f_d);
     }
+
+  mmap_clear(cur->mappings);
   
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -596,7 +598,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       
       /* Inserts the supplemental page table entry to the supplemental
          page table. */
-      page_insert (&t->pages, &new_supp_page->hash_elem);
+      page_insert (t->pages, &new_supp_page->hash_elem);
       
       /* Advance. */
       read_bytes -= page_read_bytes;

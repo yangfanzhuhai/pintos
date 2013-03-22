@@ -4,6 +4,7 @@
 #include <hash.h>
 #include "filesys/off_t.h"
 #include "threads/malloc.h"
+#include "vm/mmap.h"
 
 #define FILESYS   1
 #define SWAPSLOT  2
@@ -26,6 +27,7 @@ struct page
   struct file *file;          /* Address of the file to read from. */
   off_t ofs;                  /* Offset for the starting point. */
   size_t page_read_bytes;     /* Number of bytes to be read from file. */
+  mapid_t mapid;              /* Used by memory mapping. */
  
   /* Used when the page data is in a swap slot. */
   int swap_index;
@@ -34,7 +36,7 @@ unsigned page_hash (const struct hash_elem *p_, void *aux);
 bool page_less (const struct hash_elem *a_, const struct hash_elem *b_,
            void *aux);
 //struct hash * pages_init (void);
-void pages_init (struct hash *pages);
+struct hash * pages_init (void);
 struct page * page_create (void);
 void page_insert (struct hash *pages, struct hash_elem *new);
 struct page *page_lookup (struct hash *pages, void *address);

@@ -165,7 +165,7 @@ page_fault (struct intr_frame *f)
       void *fault_page = pg_round_down (fault_addr);
       //printf ("fault page %d\n", (int) fault_page);
       
-      struct page *supp_page = page_lookup (&t->pages, fault_page);      
+      struct page *supp_page = page_lookup (t->pages, fault_page);      
       
       /* If the supplemental page table contains information for supp_page, 
          load the data according to the page_location_option. 

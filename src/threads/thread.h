@@ -8,6 +8,7 @@
 #include "malloc.h"
 #include "synch.h"
 #include "vm/page.h"
+#include "vm/mmap.h"
 
 #define SYS_IO_MAX_FILES 128
 
@@ -108,7 +109,7 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
-    struct list_elem allelem;           /* List element for all threads list. */
+    struct list_elem allelem;           /* List element for all threads list.*/
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -116,7 +117,7 @@ struct thread
     struct list children;               /* List of child processes. */
     struct thread *parent;              /* Parent process. */
     int own_exit_status;                /* Its own exit status. */
-struct semaphore exec_wait;              /* Semaphore for waiting the 
+    struct semaphore exec_wait;         /* Semaphore for waiting the 
                                             child to load the executable
                                             before returning from sys_exec. */ 
     bool loaded_successfully;           /* True iff the child's executable
@@ -129,7 +130,8 @@ struct semaphore exec_wait;              /* Semaphore for waiting the
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
-    struct hash pages;                 /* Supplemental Page Table. */
+    struct hash *pages;                 /* Supplemental Page Table. */
+    struct hash *mappings;              /* hash table that maps mmapped files*/
 #endif
 
     /* Owned by thread.c. */
