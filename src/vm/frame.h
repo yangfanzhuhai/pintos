@@ -10,6 +10,7 @@ struct frame_table_entry
   struct thread *owner;
   void* kaddr;
   void* uaddr;
+  bool pin;
 };
 
 void frame_table_init (void);

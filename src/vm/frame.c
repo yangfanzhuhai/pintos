@@ -9,6 +9,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#define PAGE_EVICTION false
+
 #define PAGE_EVICTION_ALGORITHM     0
 
 #define PAGE_EVICTION_FIFO          0
@@ -32,12 +34,21 @@ frame_evict_choose_fifo (void)
   lock_acquire (&frame_table_lock);
 
   struct list_elem *back = list_back (&frame_table);
-  struct frame_table_entry *eviction_candidate 
+  struct frame_table_entry *fte 
     = list_entry (back, struct frame_table_entry, elem);
 
   lock_release (&frame_table_lock);
 
-  return eviction_candidate;
+  if (fte->pin)
+  {
+    lock_acquire (&frame_table_lock);
+    list_remove (&fte->elem);
+    list_push_front (&frame_table, &fte->elem);
+    lock_release (&frame_table_lock);
+    return frame_evict_choose_fifo ();
+  }
+
+  return fte;
 }
 
 struct frame_table_entry*
@@ -71,7 +82,6 @@ frame_evict (void* uaddr)
   // void pagedir_set_dirty (uint32 t *pd, const void *page, bool value )
   // void pagedir_set_accessed (uint32 t *pd, const void *page, bool value )
 
-
   /* 1. Choose a frame to evict, using your page replacement algorithm.
         The "accessed" and "dirty" bits in the page table, described below, 
         will come in handy. */
@@ -102,19 +112,41 @@ frame_evict (void* uaddr)
 
   /* 3. If necessary, write the page to the file system or to swap.
         The evicted frame may then be used to store a different page. */
-  int index = swap_to_disk (pg_round_down (fte->uaddr));
-  
-  /* Creates a supp page and insert it into pages. */
-  struct page *p = page_create ();
+  struct page *p_evict = 
+      page_lookup (fte->owner->pages, pg_round_down (fte->uaddr));
+  if (p_evict == NULL)
+        PANIC ("Failed to get supp page for existing page.");
 
-  if (p == NULL)
-    PANIC ("Failed to get supp page for swap slot.");
+  /* Page to be evicted is in swap */
+  if (p_evict->page_location_option == FILESYS)
+    {
+      if (p_evict->writable)
+        {
+          file_write_at (p_evict->file, fte->kaddr, p_evict->page_read_bytes,
+              p_evict->ofs);
+        }
+    }
+  else if (p_evict->page_location_option == ALLZERO)
+    {
+      // All zero, so can just be overwritten
+    }
+  else
+    {
+      // From stack
+      int index = swap_to_disk (pg_round_down (fte->uaddr));
+      
+      /* Creates a supp page and insert it into pages. */
+      struct page *p = page_create ();
 
-  p->addr = fte->uaddr;
-  p->page_location_option = SWAPSLOT;
-  p->swap_index = index;
-  page_insert (fte->owner->pages, &p->hash_elem);
-  
+      if (p == NULL)
+        PANIC ("Failed to get supp page for swap slot.");
+
+      p->addr = fte->uaddr;
+      p->page_location_option = SWAPSLOT;
+      p->swap_index = index;
+      page_insert (fte->owner->pages, &p->hash_elem);
+    }
+
   /* Replace virtual address with new virtual address */
   fte->owner = thread_current ();
   fte->uaddr = uaddr;
@@ -138,11 +170,12 @@ frame_obtain (enum palloc_flags flags, void* uaddr)
   /* Try and obtain frame in user memory */
   void *kaddr = palloc_get_page (flags);
 
+  
   /* Successfully obtained frame */
   if (kaddr != NULL)
     {
-      /* Create new frame table entry mapping the given page to the allocated
-         frame */
+      /* Create new frame table entry mapping the given page to the 
+         allocated frame */
       fte = (struct frame_table_entry *) malloc 
                 (sizeof (struct frame_table_entry));
 
@@ -161,8 +194,16 @@ frame_obtain (enum palloc_flags flags, void* uaddr)
   else
     {
       /* Perform eviction to release a frame and try allocation again */
-      return frame_evict (uaddr);
+      if (PAGE_EVICTION)
+      {
+        return frame_evict (uaddr);
+      }
+      else
+      {
+        PANIC ("Failed to allocate frame - eviction disabled.");
+      }
     }
+
 }
 
 
@@ -177,7 +218,7 @@ frame_release (void* uaddr)
 
   list_remove (&fte->elem);
   palloc_free_page (&fte->uaddr);
-
+  free (fte);
   lock_release (&frame_table_lock);
 }
 
