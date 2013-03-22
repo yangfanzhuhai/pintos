@@ -7,6 +7,7 @@
 struct frame_table_entry 
 {
   struct list_elem elem;
+  struct thread *owner;
   void* kaddr;
   void* uaddr;
 };

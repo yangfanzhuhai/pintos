@@ -1,9 +1,11 @@
 #include "vm/frame.h"
 #include "vm/swap.h"
 #include "lib/kernel/list.h"
+#include "userprog/pagedir.h"
 #include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/synch.h"
+#include "threads/thread.h"
 
 #define FRAME_EVICTION_ALGORITHM 0
 
@@ -52,22 +54,19 @@ frame_evict (void* uaddr UNUSED)
   /* 2. Remove references to the frame from any page table that refers to it.
         Unless you have implemented sharing, only a single page should refer to
         a frame at any given time. */
-  lock_acquire (&frame_table_lock);
-  //list_remove (&fte->elem);
-  //palloc_free_page (fte->page);
-  lock_release (&frame_table_lock);
+  struct thread* frame_owner = fte->owner;
+  pagedir_clear_page (&frame_owner->pagedir, pg_round_down (fte->uaddr));
 
 
   /* 3. If necessary, write the page to the file system or to swap.
         The evicted frame may then be used to store a different page. */
-  int index = swap_to_disk (fte->uaddr);
-  // Something to do with Luke
-  // Move fte->page_address / fte->frame_address to disk / swap
+  //int index = swap_to_disk (pg_round_down (fte->uaddr));
+  lock_acquire (&frame_table_lock);
+  list_remove (&fte->elem);
+  list_push_front (&frame_table, &fte->elem);
+  lock_release (&frame_table_lock);
 
-
-  
-
-  return NULL;
+  return fte->kaddr;
 }
 
 /* Given a virtual address (page) find a frame to put the page in and return 
@@ -88,11 +87,14 @@ frame_obtain (enum palloc_flags flags, void* uaddr)
       fte = (struct frame_table_entry *) malloc 
                 (sizeof (struct frame_table_entry));
 
+      fte->owner = thread_current ();
       fte->kaddr = kaddr;
       fte->uaddr = uaddr;
+
       lock_acquire (&frame_table_lock);
       list_push_front (&frame_table, &fte->elem);
       lock_release (&frame_table_lock);
+
       return fte->kaddr;
     }
 
@@ -120,6 +122,7 @@ frame_release (void* uaddr)
   lock_release (&frame_table_lock);
 }
 
+/* Find the frame table entry using the virtual address */
 struct frame_table_entry*
 frame_lookup_uaddr (void* uaddr)
 {
@@ -140,10 +143,11 @@ frame_lookup_uaddr (void* uaddr)
           return fte;
         }
     }
+  lock_release (&frame_table_lock);
   return NULL;
 }
 
-
+/* Find the frame table entry using the physical address */
 struct frame_table_entry*
 frame_lookup_kaddr (void* kaddr)
 {
@@ -164,5 +168,6 @@ frame_lookup_kaddr (void* kaddr)
           return fte;
         }
     }
+  lock_release (&frame_table_lock);
   return NULL;
 }
