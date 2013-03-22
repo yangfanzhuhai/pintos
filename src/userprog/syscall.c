@@ -37,7 +37,7 @@ static void sys_munmap (mapid_t);
 static void syscall_handler (struct intr_frame *);
 static bool check_ptr_valid (const void *ptr);
 static void exit_on_invalid_ptr (const void *ptr);
-static void check_stack_growth (const void *ptr, struct intr_frame *f);
+static void check_stack_growth (const void *ptr);
 
 struct lock filesys_lock;
 
@@ -66,7 +66,7 @@ exit_on_invalid_ptr (const void *ptr)
 }
 
 static void
-check_stack_growth (const void *ptr, struct intr_frame *f)
+check_stack_growth (const void *ptr)
 {
   if (!(ptr != NULL && is_user_vaddr (ptr)))
     thread_exit ();
@@ -122,7 +122,7 @@ syscall_handler (struct intr_frame *f)
       break;
     case SYS_EXEC:
       //exit_on_invalid_ptr ((void *)*(esp + 1));
-      check_stack_growth ((void *)*(esp + 1), f);
+      check_stack_growth ((void *)*(esp + 1));
       f->eax = sys_exec ((char *) *(esp + 1));
       break;
     case SYS_WAIT:
@@ -130,17 +130,17 @@ syscall_handler (struct intr_frame *f)
       break;
     case SYS_CREATE:
       //exit_on_invalid_ptr ((void *)*(esp + 1));
-      check_stack_growth ((void *)*(esp + 1), f);
+      check_stack_growth ((void *)*(esp + 1));
       f->eax = sys_create ((char *) *(esp + 1), *(esp + 2));
       break;
     case SYS_REMOVE:
       //exit_on_invalid_ptr ((void *)*(esp + 1));
-      check_stack_growth ((void *)*(esp + 1), f);
+      check_stack_growth ((void *)*(esp + 1));
       f->eax = sys_remove ((char *) *(esp + 1));
       break;
     case SYS_OPEN:
       //exit_on_invalid_ptr ((void *)*(esp + 1));
-      check_stack_growth ((void *)*(esp + 1), f);
+      check_stack_growth ((void *)*(esp + 1));
       f->eax = sys_open ((char *) *(esp + 1));
       break;
     case SYS_FILESIZE:
@@ -148,12 +148,12 @@ syscall_handler (struct intr_frame *f)
       break;
     case SYS_READ: 
       //exit_on_invalid_ptr ((void *)*(esp + 2)); 
-      check_stack_growth ((void *)*(esp + 2), f);  
+      check_stack_growth ((void *)*(esp + 2));  
       f->eax = sys_read (*(esp + 1), (void *) *(esp + 2), *(esp + 3));
       break;
     case SYS_WRITE:
       //exit_on_invalid_ptr ((void *)*(esp + 2));
-      check_stack_growth ((void *)*(esp + 2), f);
+      check_stack_growth ((void *)*(esp + 2));
       f->eax = sys_write (*(esp + 1), (void *) *(esp + 2), *(esp + 3));
       break;
     case SYS_SEEK:
@@ -166,7 +166,6 @@ syscall_handler (struct intr_frame *f)
       sys_close (*(esp + 1));
       break;
     case SYS_MMAP:
-      check_stack_growth ((void *)*(esp + 2), f);
       f->eax = sys_mmap (*(esp + 1), (void *) *(esp + 2));
       break;
     case SYS_MUNMAP:
@@ -318,10 +317,10 @@ sys_read (int fd, void *buffer, unsigned length)
 
   while ( buffer + PGSIZE * i < buffer + length - 1)
   {
-    exit_on_invalid_ptr (buffer + PGSIZE * i); 
+    check_stack_growth (buffer + PGSIZE * i); 
     i++; 
   }
-  exit_on_invalid_ptr (buffer + length - 1);
+  check_stack_growth (buffer + length - 1);
 
   lock_acquire (&filesys_lock);
 
@@ -377,10 +376,10 @@ sys_write (int fd, const void *buffer, unsigned length)
 
   while ( buffer + PGSIZE * i < buffer + length - 1)
   {
-    exit_on_invalid_ptr (buffer + PGSIZE * i); 
+    check_stack_growth (buffer + PGSIZE * i); 
     i++; 
   }
-  exit_on_invalid_ptr (buffer + length - 1);
+  check_stack_growth (buffer + length - 1);
 
   lock_acquire (&filesys_lock);
 

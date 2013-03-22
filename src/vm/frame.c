@@ -8,6 +8,7 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include <stdio.h>
 
 #define FRAME_EVICTION_ALGORITHM 0
 
@@ -71,8 +72,8 @@ frame_evict (void* uaddr)
     PANIC ("Failed to get supp page for swap slot.");
 
   p->addr = fte->uaddr;
-  p->page_location_option = SWAPSLOT;
   p->swap_index = index;
+  p->page_location_option = SWAPSLOT;
   page_insert (fte->owner->pages, &p->hash_elem);
   
   /* Replace virtual address with new virtual address */
@@ -94,7 +95,6 @@ void*
 frame_obtain (enum palloc_flags flags, void* uaddr)
 {
   struct frame_table_entry* fte;
-
   /* Try and obtain frame in user memory */
   void *kaddr = palloc_get_page (flags);
 
@@ -108,7 +108,7 @@ frame_obtain (enum palloc_flags flags, void* uaddr)
 
       fte->owner = thread_current ();
       fte->kaddr = kaddr;
-      fte->uaddr = uaddr;
+      fte->uaddr = pg_round_down (uaddr);
 
       lock_acquire (&frame_table_lock);
       list_push_front (&frame_table, &fte->elem);
@@ -137,7 +137,7 @@ frame_release (void* uaddr)
 
   list_remove (&fte->elem);
   palloc_free_page (&fte->uaddr);
-
+  free (fte);
   lock_release (&frame_table_lock);
 }
 

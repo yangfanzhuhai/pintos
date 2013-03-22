@@ -1,6 +1,7 @@
 #include "vm/page.h"
 #include <hash.h>
 #include <debug.h>
+#include <stdio.h>
 
 static void page_free (struct hash_elem *e, void *aux);
 

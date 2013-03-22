@@ -200,6 +200,7 @@ page_fault (struct intr_frame *f)
                 break;
               
               case SWAPSLOT:
+                printf("Supp: %d\n", supp_page->swap_index);
                 swap_from_disk (supp_page->swap_index, kpage);
                 break;
   

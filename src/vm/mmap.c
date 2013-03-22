@@ -67,7 +67,7 @@ mmap_add (struct hash *mappings, int fd, void *addr)
     return MAP_FAILED;
 
   /* Must fail is addr is 0 as pintos assumes vaddr 0 is unmapped */
-  if ((uintptr_t) addr == 0)
+  if (addr == NULL)
     return MAP_FAILED;
 
   /* File can not be mapped if addr is not page aligned. */
@@ -92,13 +92,15 @@ mmap_add (struct hash *mappings, int fd, void *addr)
   if (file_size % PGSIZE != 0)
     number_of_pages++;
 
+  //printf("Pre overlap check: No. of Pages : %d \n", number_of_pages);
   /* Check if pages overlaps with pages which are already mapped */
   int i;
   for (i = 0; i < number_of_pages; i++)
   {
     int page_offset = i*PGSIZE;
   
-    if(pagedir_get_page(current_thread->pagedir, addr + page_offset))
+    if(pagedir_get_page(current_thread->pagedir, addr + page_offset ) != NULL ||
+       page_lookup (current_thread->pages, addr + page_offset) != NULL)
     {
       file_close (file);
       return MAP_FAILED;
@@ -156,7 +158,7 @@ mmap_add (struct hash *mappings, int fd, void *addr)
     p->ofs = ofs;
     p->page_read_bytes = bytes_read;
     p->mapid = mapid;
-     
+    
     page_insert (current_thread->pages, &p->hash_elem);
 
     file_size -= bytes_read;
