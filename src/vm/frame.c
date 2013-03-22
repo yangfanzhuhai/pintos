@@ -1,5 +1,6 @@
 #include "vm/frame.h"
 #include "vm/swap.h"
+#include "vm/page.h"
 #include "lib/kernel/list.h"
 #include "userprog/pagedir.h"
 #include "threads/malloc.h"
@@ -30,7 +31,7 @@ frame_evict_choose_fifo (void)
 }
 
 void*
-frame_evict (void* uaddr UNUSED)
+frame_evict (void* uaddr)
 {
   // bool pagedir_is_dirty (uint32 t *pd, const void *page )
   // bool pagedir_is_accessed (uint32 t *pd, const void *page )
@@ -56,12 +57,29 @@ frame_evict (void* uaddr UNUSED)
         Unless you have implemented sharing, only a single page should refer to
         a frame at any given time. */
   struct thread* frame_owner = fte->owner;
-  pagedir_clear_page (&frame_owner->pagedir, pg_round_down (fte->uaddr));
+  pagedir_clear_page (frame_owner->pagedir, pg_round_down (fte->uaddr));
 
 
   /* 3. If necessary, write the page to the file system or to swap.
         The evicted frame may then be used to store a different page. */
-  //int index = swap_to_disk (pg_round_down (fte->uaddr));
+  int index = swap_to_disk (pg_round_down (fte->uaddr));
+  
+  /* Creates a supp page and insert it into pages. */
+  struct page *p = page_create ();
+
+  if (p == NULL)
+    PANIC ("Failed to get supp page for swap slot.");
+
+  p->addr = fte->uaddr;
+  p->page_location_option = SWAPSLOT;
+  p->swap_index = index;
+  page_insert (fte->owner->pages, &p->hash_elem);
+  
+  /* Replace virtual address with new virtual address */
+  fte->owner = thread_current ();
+  fte->uaddr = uaddr;
+
+  /* Reinsert the frame table entry into the frame table */
   lock_acquire (&frame_table_lock);
   list_remove (&fte->elem);
   list_push_front (&frame_table, &fte->elem);

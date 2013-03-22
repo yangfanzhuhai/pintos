@@ -7,8 +7,8 @@
 #include <stdbool.h>
 #include "malloc.h"
 #include "synch.h"
+#include "vm/page.h"
 #include "vm/mmap.h"
-
 
 #define SYS_IO_MAX_FILES 128
 
@@ -130,6 +130,7 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+    struct hash *pages;                 /* Supplemental Page Table. */
     struct hash *mappings;              /* hash table that maps mmapped files*/
 #endif
 

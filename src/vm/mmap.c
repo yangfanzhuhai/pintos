@@ -114,10 +114,10 @@ mmap_add (struct hash *mappings, int fd, void *addr)
   /* Create mapping element to be stored in the mappign hash table */
   struct mapping *m = (struct mapping*) malloc (sizeof (struct mapping));
   if (m == NULL)
-  {
-    file_close (file);
-    return MAP_FAILED;
-  }
+    {
+      file_close (file);
+      return MAP_FAILED;
+    }
 
   m->mapid = mapid;
   m->addr = addr;
@@ -132,7 +132,7 @@ mmap_add (struct hash *mappings, int fd, void *addr)
   int bytes_zero = 0;
   for (i = 0; i < number_of_pages; i++)
   {
-    int page_offset = i*PGSIZE;
+    //int page_offset = i*PGSIZE;
   
     if (file_size >= PGSIZE)
     {
@@ -144,7 +144,16 @@ mmap_add (struct hash *mappings, int fd, void *addr)
       bytes_read = file_size;
       bytes_zero = PGSIZE - bytes_read;
     }
-    
+    /*
+    struct page *p = page_create ();
+    if (p == NULL)
+      {
+        file_close (file);
+        return MAP_FAILED;
+      }
+    p->addr = addr + page_offset;
+    p->page_location_option = FILESYS;
+    p-> */
     //page_add (addr + page_offset, bytes_read, bytes_zero, mapid);
 
     file_size -= bytes_read;
@@ -160,31 +169,32 @@ mmap_remove (struct hash *mappings, mapid_t mapid)
   struct mapping m;
   struct hash_elem *e;
   m.mapid = mapid;
-  e = hash_delete(mappings, &m.hash_elem);
+  e = hash_delete (mappings, &m.hash_elem);
 
-  ASSERT(e != NULL);
+  ASSERT (e != NULL);
 
-  free_mapping(e, NULL);
+  free_mapping (e, NULL);
 }
 
 void
 mmap_clear (struct hash *mappings)
 {
   /* Delete each element from the hash table and free their mapping*/
-  hash_destroy(mappings, &free_mapping);
+  hash_destroy (mappings, &free_mapping);
 }
 
 static void 
-free_mapping(struct hash_elem *e, void *aux UNUSED)
+free_mapping (struct hash_elem *e, void *aux UNUSED)
 {
   struct mapping *mapping = hash_entry (e, struct mapping, hash_elem);
-  ASSERT(mapping != NULL);  
+  ASSERT (mapping != NULL);  
+  struct thread *t = thread_current ();
 
   /* Remove each page from the supplementary page table */
   int i;
   for (i = 0; i < mapping->number_of_pages; i++)
   {
-    //page_remove (mapping->addr + i*PGSIZE)
+    //page_delete (t->pages, mapping->addr + i*PGSIZE);
   }
 
   /* Close the file and free the mapping/hash element*/

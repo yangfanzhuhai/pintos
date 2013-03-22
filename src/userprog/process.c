@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "vm/page.h"
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
@@ -22,6 +23,7 @@
 #include "vm/frame.h"
 #include "vm/swap.h"
 
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
@@ -32,10 +34,6 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
-  /* Impose a limit of 4KB on the length of the command line arguments*/
-  if (strlen (file_name) > PGSIZE) 
-    return -1;
-
   char *fn_copy;
   char *fn_copy1;
   char *program_name;
@@ -92,14 +90,11 @@ start_process (void *file_name_)
   int i;
   int numbytes;
   int totalbytes;
-  int stack_size;          /* Keeps track of the stack size to 
-                              avoid stack page overflow. */
   void *original_esp;
   
   memory_allocated = false;
   success = false;
   totalbytes = 0;
-  stack_size = 0;
   
   tokens = palloc_get_page (0);
   if (tokens == NULL)
@@ -140,15 +135,6 @@ start_process (void *file_name_)
       memcpy (if_.esp, tokens[i], numbytes);
       totalbytes += numbytes;
     }
-  
-  /* Calculate and check the overall stack size to 
-     avoid stack page overflow. */
-  stack_size = totalbytes; 
-  stack_size += (4 - totalbytes % 4) % 4;
-  stack_size += args_count * sizeof (char *);
-  stack_size += sizeof (char **) + sizeof (int) + 4;
-  if (stack_size > PGSIZE)
-    goto done;
   
   /* Round the stack pointer down to a multiple of 4 
     for best performance. */
@@ -191,12 +177,12 @@ start_process (void *file_name_)
   palloc_free_page (file_name);
   
   /* Inform the parent on the current process' load status. */
-  if (memory_allocated && success && stack_size < PGSIZE)
+  if (memory_allocated && success)
     thread_current ()->parent->loaded_successfully = true;
   sema_up (&thread_current ()->parent->exec_wait);
   
   /* If load failed, quit. */  
-  if (!memory_allocated || !success || stack_size > PGSIZE) 
+  if (!memory_allocated || !success) 
     thread_exit ();
 
   /* Start the user process by simulating a return from an
@@ -214,7 +200,8 @@ start_process (void *file_name_)
    exception), returns -1.  If TID is invalid or if it was not a
    child of the calling process, or if process_wait() has already
    been successfully called for the given TID, returns -1
-   immediately, without waiting. */
+   immediately, without waiting.*/
+
 int
 process_wait (tid_t child_tid) 
 {
@@ -247,6 +234,8 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+  
+  pages_destroy (cur->pages);
   
   /* Close all files that this thread has open */
   while (!list_empty (&cur->open_files))
@@ -484,7 +473,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
 /* load() helpers. */
 
-static bool install_page (void *upage, void *kpage, bool writable);
+//static bool install_page (void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -531,20 +520,28 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
   return true;
 }
 
-/* Loads a segment starting at offset OFS in FILE at address
-   UPAGE.  In total, READ_BYTES + ZERO_BYTES bytes of virtual
-   memory are initialized, as follows:
+/* Creates a supplemental page table entry at address UPAGE 
+   for each file segment starting at offset OFS in FILE.
+ 
+   The offsets in FILE for each segment, page_read_bytes and 
+   writable are recorded in the supplemental page table entry
+   with the page_location_option set to FILESYS.
+ 
+   If the page_zero_bytes is equal to PGSIZE, the 
+   page_location_option for that supplemental page table is 
+   set to ALLZERO.
+ 
+   Each UPAGE is recorded in the pagedir. But it maps to NULL and 
+   will trigger page fault later. The page fault handler will 
+   look up the UPAGE address in the supplemental page table and 
+   load the page from the recorded FILE segment. 
 
-        - READ_BYTES bytes at UPAGE must be read from FILE
-          starting at offset OFS.
-
-        - ZERO_BYTES bytes at UPAGE + READ_BYTES must be zeroed.
-
-   The pages initialized by this function must be writable by the
-   user process if WRITABLE is true, read-only otherwise.
-
-   Return true if successful, false if a memory allocation error
-   or disk read error occurs. */
+   In total, (READ_BYTES + ZERO_BYTES bytes) / PGSIZE of  
+   supplemental page table entries are created and inserted. 
+ 
+   Return true if successful, false if a memory allocation error 
+   occurs.
+*/
 static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
               uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
@@ -553,7 +550,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
-  file_seek (file, ofs);
+  struct thread *t = thread_current ();
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Calculate how to fill this page.
@@ -562,26 +559,31 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
-      uint8_t *kpage = frame_obtain (PAL_USER, upage);
-      if (kpage == NULL)
+      /* Get a new supplemental page table entry. */
+      struct page *new_supp_page = page_create ();
+      if (new_supp_page == NULL)
         return false;
-
-      /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
+        
+      /* Records the current segment for lazy-loading. */
+      new_supp_page->addr = upage;
+      new_supp_page->writable = writable;
+      if (page_zero_bytes == PGSIZE)
         {
-          frame_release (kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
-      /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable)) 
+          new_supp_page->page_location_option = ALLZERO;
+        }       
+      else
         {
-          frame_release (kpage);
-          return false; 
+          new_supp_page->page_location_option = FILESYS;
+          new_supp_page->file = file;
+          new_supp_page->ofs = ofs;
+          new_supp_page->page_read_bytes = page_read_bytes;
+          ofs += page_read_bytes;
         }
-
+      
+      /* Inserts the supplemental page table entry to the supplemental
+         page table. */
+      page_insert (t->pages, &new_supp_page->hash_elem);
+      
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
@@ -620,7 +622,7 @@ setup_stack (void **esp)
    with palloc_get_page().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
-static bool
+bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();

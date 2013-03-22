@@ -9,6 +9,8 @@
 #include "threads/malloc.h"
 #include "devices/shutdown.h"
 #include "vm/mmap.h"
+#include "vm/frame.h"
+#include "vm/page.h"
 #include "threads/synch.h"
 #include "userprog/process.h"
 
@@ -35,6 +37,7 @@ static void sys_munmap (mapid_t);
 static void syscall_handler (struct intr_frame *);
 static bool check_ptr_valid (const void *ptr);
 static void exit_on_invalid_ptr (const void *ptr);
+static void check_stack_growth (const void *ptr, struct intr_frame *f);
 
 struct lock filesys_lock;
 
@@ -46,6 +49,53 @@ syscall_init (void)
   lock_init (&filesys_lock);
 }
 
+
+static bool 
+check_ptr_valid (const void *ptr)
+{
+  uint32_t *pd = thread_current()->pagedir;
+  return ptr != NULL && is_user_vaddr (ptr) && 
+          pagedir_get_page (pd, ptr) != NULL;
+}
+
+static void 
+exit_on_invalid_ptr (const void *ptr)
+{
+  if (!check_ptr_valid (ptr))
+    thread_exit ();
+}
+
+static void
+check_stack_growth (const void *ptr, struct intr_frame *f)
+{
+  if (!(ptr != NULL && is_user_vaddr (ptr)))
+    thread_exit ();
+    
+  /*
+  uint32_t *pd = thread_current()->pagedir;
+  if (pagedir_get_page (pd, ptr) == NULL )
+    {
+      if (ptr == f->esp - 4 || ptr == f->esp - 32)
+        {
+      // Stack growth
+        void *fault_page = pg_round_down (ptr);
+          // Obtain a frame for stack growth. 
+          uint8_t *kpage = frame_obtain (PAL_USER, fault_page);
+          if (kpage == NULL)
+            thread_exit ();       
+          
+          // Add the page to the process's address space. 
+          if (!install_page (fault_page, kpage, true))
+            {
+              frame_release (kpage);
+              thread_exit ();
+            }
+        }
+      else 
+        thread_exit ();
+    }*/
+}
+
 static void
 syscall_handler (struct intr_frame *f) 
 {
@@ -55,7 +105,12 @@ syscall_handler (struct intr_frame *f)
   exit_on_invalid_ptr (esp + 1);
   exit_on_invalid_ptr (esp + 2);
   exit_on_invalid_ptr (esp + 3);
-
+/*  
+  check_stack_growth (esp);
+  check_stack_growth (esp + 1);
+  check_stack_growth (esp + 2);
+  check_stack_growth (esp + 3);
+*/
   uint32_t syscall_number = *esp;
   switch (syscall_number)
   {
@@ -67,6 +122,7 @@ syscall_handler (struct intr_frame *f)
       break;
     case SYS_EXEC:
       exit_on_invalid_ptr ((void *)*(esp + 1));
+      //check_stack_growth ((void *)*(esp + 1), f);
       f->eax = sys_exec ((char *) *(esp + 1));
       break;
     case SYS_WAIT:
@@ -74,25 +130,30 @@ syscall_handler (struct intr_frame *f)
       break;
     case SYS_CREATE:
       exit_on_invalid_ptr ((void *)*(esp + 1));
+      //check_stack_growth ((void *)*(esp + 1), f);
       f->eax = sys_create ((char *) *(esp + 1), *(esp + 2));
       break;
     case SYS_REMOVE:
       exit_on_invalid_ptr ((void *)*(esp + 1));
+      //check_stack_growth ((void *)*(esp + 1), f);
       f->eax = sys_remove ((char *) *(esp + 1));
       break;
     case SYS_OPEN:
       exit_on_invalid_ptr ((void *)*(esp + 1));
+      //check_stack_growth ((void *)*(esp + 1), f);
       f->eax = sys_open ((char *) *(esp + 1));
       break;
     case SYS_FILESIZE:
       f->eax = sys_filesize (*(esp + 1));
       break;
-    case SYS_READ:
-      exit_on_invalid_ptr ((void *)*(esp + 2));
+    case SYS_READ: 
+      //exit_on_invalid_ptr ((void *)*(esp + 2)); 
+      check_stack_growth ((void *)*(esp + 2), f);  
       f->eax = sys_read (*(esp + 1), (void *) *(esp + 2), *(esp + 3));
       break;
     case SYS_WRITE:
-      exit_on_invalid_ptr ((void *)*(esp + 2));
+      //exit_on_invalid_ptr ((void *)*(esp + 2));
+      check_stack_growth ((void *)*(esp + 2), f);
       f->eax = sys_write (*(esp + 1), (void *) *(esp + 2), *(esp + 3));
       break;
     case SYS_SEEK:
@@ -105,6 +166,7 @@ syscall_handler (struct intr_frame *f)
       sys_close (*(esp + 1));
       break;
     case SYS_MMAP:
+      check_stack_growth ((void *)*(esp + 2), f);
       f->eax = sys_mmap (*(esp + 1), (void *) *(esp + 2));
       break;
     case SYS_MUNMAP:
@@ -113,24 +175,6 @@ syscall_handler (struct intr_frame *f)
     default:
       break; 
   }
-}
-
-static bool 
-check_ptr_valid (const void *ptr)
-{
-  uint32_t *pd = thread_current()->pagedir;
-
-  return ptr != NULL && is_user_vaddr (ptr) &&  
-         pagedir_get_page (pd,ptr) != NULL;
-}
-
-static void 
-exit_on_invalid_ptr (const void *ptr)
-{
-  if (!check_ptr_valid (ptr))
-    {
-      thread_exit ();
-    }
 }
 
 static void sys_halt (void)
