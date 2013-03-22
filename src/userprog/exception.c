@@ -5,14 +5,14 @@
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
-#include "vm/page.h"
 #include "userprog/pagedir.h"
 #include "filesys/file.h"
 #include "threads/palloc.h"
 #include "threads/malloc.h"
 #include "threads/vaddr.h"
 #include "userprog/process.h"
-
+#include "vm/page.h"
+#include "vm/frame.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -173,11 +173,14 @@ page_fault (struct intr_frame *f)
       if (supp_page != NULL)
         { 
           struct file *file;
-          /* Get a page of memory. TODO: change to get frame. Yangfan. */
-          uint8_t *kpage = palloc_get_page (PAL_USER);
+          /* Obtain a frame to store the page. */
+          uint8_t *kpage = frame_obtain (PAL_USER, fault_page);
           if (kpage == NULL)
-            PANIC ("Fail to get frame/page for lazy loading in page_falut_handler");
-                
+            {
+              frame_release (kpage);
+              PANIC ("Fail to get frame for lazy-loading in page_falut_handler.");
+            }
+            
           switch (supp_page->page_location_option)
             {
               /* The data that should be in this page is in the file system. */
@@ -188,8 +191,8 @@ page_fault (struct intr_frame *f)
                 if (file_read (file, kpage, supp_page->page_read_bytes) 
                                != (int)supp_page->page_read_bytes)
                   {
-                    palloc_free_page (kpage);
-                    PANIC ("Fail to read file for lazy loading in page_falut_handler");
+                    frame_release (kpage);
+                    PANIC ("Fail to read file for lazy-loading in page_falut_handler");
                   }
                 memset (kpage + supp_page->page_read_bytes, 0, 
                         PGSIZE - (supp_page->page_read_bytes));
@@ -203,6 +206,7 @@ page_fault (struct intr_frame *f)
             /* Add the page to the process's address space. */
             if (!install_page (fault_page, kpage, supp_page->writable))
               {
+                frame_release (kpage);
                 PANIC ("Fail to point the page table entry for the faulting virtual address to the frame. ");
               }             
         }

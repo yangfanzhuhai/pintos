@@ -20,6 +20,8 @@
 #include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "vm/frame.h"
+#include "vm/swap.h"
 
 
 static thread_func start_process NO_RETURN;
@@ -215,6 +217,7 @@ start_process (void *file_name_)
    child of the calling process, or if process_wait() has already
    been successfully called for the given TID, returns -1
    immediately, without waiting.*/
+
 int
 process_wait (tid_t child_tid) 
 {
@@ -569,7 +572,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
          and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
- 
+
       /* Get a new supplemental page table entry. */
       struct page *new_supp_page = page_create ();
       if (new_supp_page == NULL)
@@ -611,14 +614,15 @@ setup_stack (void **esp)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  void* top_uaddr = ((uint8_t *) PHYS_BASE) - PGSIZE;
+  kpage = frame_obtain (PAL_USER | PAL_ZERO, top_uaddr);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
         *esp = PHYS_BASE;
       else
-        palloc_free_page (kpage);
+        frame_release (kpage);
     }
   return success;
 }
