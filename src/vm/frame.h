@@ -10,10 +10,12 @@ struct frame_table_entry
   struct thread *owner;
   void* kaddr;
   void* uaddr;
+  bool pin;
 };
 
 void frame_table_init (void);
 struct frame_table_entry* frame_evict_choose_fifo (void);
+struct frame_table_entry* frame_evict_choose_secondchance (void);
 void* frame_evict (void* page_address);
 void* frame_obtain (enum palloc_flags flags, void* page_address);
 void frame_release (void* uaddr);
