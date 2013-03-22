@@ -87,8 +87,7 @@ syscall_handler (struct intr_frame *f)
     case SYS_FILESIZE:
       f->eax = sys_filesize (*(esp + 1));
       break;
-    case SYS_READ:
-      exit_on_invalid_ptr ((void *)*(esp + 2));
+    case SYS_READ:    
       f->eax = sys_read (*(esp + 1), (void *) *(esp + 2), *(esp + 3));
       break;
     case SYS_WRITE:
@@ -115,7 +114,7 @@ check_ptr_valid (const void *ptr)
   uint32_t *pd = thread_current()->pagedir;
 
   return ptr != NULL && is_user_vaddr (ptr) &&  
-         pagedir_get_page (pd,ptr) != NULL;
+         pagedir_get_page (pd, ptr) != NULL;
 }
 
 static void 

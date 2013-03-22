@@ -33,8 +33,8 @@ tid_t
 process_execute (const char *file_name) 
 {
   /* Impose a limit of 4KB on the length of the command line arguments*/
-  if (strlen (file_name) > PGSIZE) 
-    return -1;
+  //if (strlen (file_name) > PGSIZE) 
+  //  return -1;
 
   char *fn_copy;
   char *fn_copy1;
@@ -562,8 +562,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (ofs % PGSIZE == 0);
 
   struct thread *t = thread_current ();
-    printf("load_segment t name %s\n", t->name);
-  //file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Calculate how to fill this page.
@@ -572,7 +570,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
  
-      printf ("upage %d\n", *upage);
       /* Get a new supplemental page table entry. */
       struct page *new_supp_page = page_create ();
       if (new_supp_page == NULL)
@@ -594,13 +591,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           ofs += page_read_bytes;
         }
       
-      printf("page_location_option %d\n", new_supp_page->page_location_option);
-        
       /* Inserts the supplemental page table entry to the supplemental
          page table. */
       page_insert (&t->pages, &new_supp_page->hash_elem);
-      
-      printf ("hash size %d\n", hash_size (&t->pages));
       
       /* Advance. */
       read_bytes -= page_read_bytes;

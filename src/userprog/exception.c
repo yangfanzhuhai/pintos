@@ -148,86 +148,76 @@ page_fault (struct intr_frame *f)
   intr_enable ();
 
   /* Count page faults. */
-  //page_fault_cnt++;
+  page_fault_cnt++;
 
   /* Determine cause. */
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  /* To implement virtual memory, delete the rest of the function
-     body, and replace it with code that brings in the page to
-     which fault_addr refers. */
-  /*printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-  kill (f);*/
-  
-  struct thread *t = thread_current ();
-  printf("t name %s\n", t->name);
-  struct page *supp_page = page_lookup (&t->pages, fault_addr);
-  
-  if (supp_page != NULL)
+  /* If the faulting address is not a present page in the page table, look up
+     the supplemental page table for possible data location. */
+  if (not_present)
     {
-      printf("HELLO\n");
-      
-      struct file *file;
-      /* Get a page of memory. TODO: change to get frame. Yangfan. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
-        PANIC ("Fail to get frame/page for lazy loading in page_falut_handler");
-            
-      switch (supp_page->page_location_option)
-        {
-          /* The data that should be in this page is in the file system. */
-          case FILESYS:
-            /* Load this page with the file data recorded in the supp_page. */
-            file = supp_page->file;
-            file_seek (file, supp_page->ofs);
-            if (file_read (file, kpage, supp_page->page_read_bytes) 
-                           != (int)supp_page->page_read_bytes)
-              {
-                palloc_free_page (kpage);
-                PANIC ("Fail to read file for lazy loading in page_falut_handler");
-              }
-            memset (kpage + supp_page->page_read_bytes, 0, 
-                    PGSIZE - (supp_page->page_read_bytes));
-            pagedir_set_page (t->pagedir, pagedir_get_page (t->pagedir, 
-                               fault_addr), kpage, supp_page->writable);
-            break;
-            
-          case ALLZERO:
-            memset (kpage, 0, PGSIZE);
-            pagedir_set_page (t->pagedir, pagedir_get_page (t->pagedir, 
-                               fault_addr), kpage, supp_page->writable);
-            break;
-        }
-        
-        /* Add the page to the process's address space. */
-        if (!install_page (fault_addr, kpage, supp_page->writable))
-          {
-      /*      palloc_free_page (kpage);
-            printf ("Page fault at %p: %s error %s page in %s context.\n",
-            fault_addr,
-            not_present ? "not present" : "rights violation",
-            write ? "writing" : "reading",
-            user ? "user" : "kernel");
-            kill (f);*/
-            
-            PANIC ("hihi");
-          }
+      struct thread *t = thread_current ();
+     // printf("t name %s\n", t->name);
 
+      void *fault_page = pg_round_down (fault_addr);
+      //printf ("fault page %d\n", (int) fault_page);
+      
+      struct page *supp_page = page_lookup (&t->pages, fault_page);      
+      
+      /* If the supplemental page table contains information for supp_page, 
+         load the data according to the page_location_option. 
+         */
+      if (supp_page != NULL)
+        { 
+          struct file *file;
+          /* Get a page of memory. TODO: change to get frame. Yangfan. */
+          uint8_t *kpage = palloc_get_page (PAL_USER);
+          if (kpage == NULL)
+            PANIC ("Fail to get frame/page for lazy loading in page_falut_handler");
+                
+          switch (supp_page->page_location_option)
+            {
+              /* The data that should be in this page is in the file system. */
+              case FILESYS:
+                /* Load this page with the file data recorded in the supp_page. */
+                file = supp_page->file;
+                file_seek (file, supp_page->ofs);
+                if (file_read (file, kpage, supp_page->page_read_bytes) 
+                               != (int)supp_page->page_read_bytes)
+                  {
+                    palloc_free_page (kpage);
+                    PANIC ("Fail to read file for lazy loading in page_falut_handler");
+                  }
+                memset (kpage + supp_page->page_read_bytes, 0, 
+                        PGSIZE - (supp_page->page_read_bytes));
+                break;
+                
+              case ALLZERO:
+                memset (kpage, 0, PGSIZE);
+                break;
+            }
+            
+            /* Add the page to the process's address space. */
+            if (!install_page (fault_page, kpage, supp_page->writable))
+              {
+                PANIC ("Fail to point the page table entry for the faulting virtual address to the frame. ");
+              }             
+        }
+      else 
+        thread_exit ();
     }
   else 
     {
-      printf ("Page fault at %p: %s error %s page in %s context.\n",
+   /*   printf ("Page fault at %p: %s error %s page in %s context.\n",
           fault_addr,
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
-      kill (f);
+      kill (f);*/
+      thread_exit ();
     }
 }
 
