@@ -1,4 +1,5 @@
 #include "vm/frame.h"
+#include "vm/swap.h"
 #include "lib/kernel/list.h"
 #include "threads/malloc.h"
 #include "threads/palloc.h"
@@ -28,6 +29,13 @@ frame_evict_choose_fifo (void)
 void*
 frame_evict (void* uaddr UNUSED)
 {
+  // bool pagedir_is_dirty (uint32 t *pd, const void *page )
+  // bool pagedir_is_accessed (uint32 t *pd, const void *page )
+
+  // void pagedir_set_dirty (uint32 t *pd, const void *page, bool value )
+  // void pagedir_set_accessed (uint32 t *pd, const void *page, bool value )
+
+
   /* 1. Choose a frame to evict, using your page replacement algorithm.
         The "accessed" and "dirty" bits in the page table, described below, 
         will come in handy. */
@@ -52,10 +60,11 @@ frame_evict (void* uaddr UNUSED)
 
   /* 3. If necessary, write the page to the file system or to swap.
         The evicted frame may then be used to store a different page. */
+  int index = swap_to_disk (fte->uaddr);
   // Something to do with Luke
   // Move fte->page_address / fte->frame_address to disk / swap
 
-  /* 4. Recycle frame to hold new page */
+
   
 
   return NULL;
@@ -116,6 +125,8 @@ frame_lookup_uaddr (void* uaddr)
 {
   struct list_elem *e;
 
+  lock_acquire (&frame_table_lock);
+
   for (e = list_begin (&frame_table);
        e != list_end (&frame_table); 
        e = list_next (e))
@@ -125,6 +136,7 @@ frame_lookup_uaddr (void* uaddr)
 
       if (fte->uaddr == uaddr)
         {
+          lock_release (&frame_table_lock);
           return fte;
         }
     }
@@ -137,6 +149,8 @@ frame_lookup_kaddr (void* kaddr)
 {
   struct list_elem *e;
 
+  lock_acquire (&frame_table_lock);
+
   for (e = list_begin (&frame_table);
        e != list_end (&frame_table); 
        e = list_next (e))
@@ -146,6 +160,7 @@ frame_lookup_kaddr (void* kaddr)
 
       if (fte->kaddr == kaddr)
         {
+          lock_release (&frame_table_lock);
           return fte;
         }
     }
